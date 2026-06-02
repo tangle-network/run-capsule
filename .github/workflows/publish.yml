@@ -1,0 +1,43 @@
+name: publish
+
+# Tag-publish with npm provenance via OIDC (no static NPM_TOKEN), matching the
+# Tangle substrate-release flow. Push a tag like `v0.2.0` to publish.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write # OIDC → npm trusted publisher + provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --no-frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      # OIDC trusted publishing needs npm >= 11.5.1 (Node 22 ships npm 10), and
+      # no `workspace:` deps here so `npm publish` is safe. Idempotent: skip if
+      # the tagged version is already on the registry.
+      - name: Publish to npm (OIDC trusted publishing)
+        run: |
+          npm install -g npm@latest
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "$NAME@$VERSION already on registry; skipping"
+          else
+            npm publish --provenance --access public --registry=https://registry.npmjs.org
+          fi

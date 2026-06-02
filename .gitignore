@@ -1,0 +1,5 @@
+node_modules
+dist
+run-capsules
+*.log
+.DS_Store

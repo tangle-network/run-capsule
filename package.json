@@ -1,0 +1,67 @@
+{
+  "name": "@tangle-network/run-capsule",
+  "version": "0.2.0",
+  "description": "Turn any agent run's trace into a shareable video — code/terminal/screen/conversation capsule animations, recorded headless and uploaded to a temp link. Secrets are redacted before upload. Consumer of @tangle-network/agent-eval/storyboard.",
+  "type": "module",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tangle-network/run-capsule.git"
+  },
+  "homepage": "https://github.com/tangle-network/run-capsule#readme",
+  "keywords": [
+    "agent",
+    "trace",
+    "video",
+    "replay",
+    "storyboard",
+    "demo",
+    "observability",
+    "playwright",
+    "tangle"
+  ],
+  "bin": {
+    "run-capsule": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && node scripts/build-studio.mjs",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@tangle-network/agent-eval": "^0.76.0",
+    "playwright": "^1.57.0"
+  },
+  "devDependencies": {
+    "@tangle-network/brand": "^0.3.0",
+    "@tangle-network/sandbox-ui": "^0.20.1",
+    "@tangle-network/ui": "^1.0.1",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.28.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
