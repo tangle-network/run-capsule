@@ -99,6 +99,26 @@ export interface NarrationResult {
 /** A short voiceover script derived from the run: the ask, the key beats, the
  *  outcome. Kept terse — it's narration, not a transcript. When a verdict is
  *  given, it closes on the gate result so the VO matches the scoreboard shot. */
+/** Make a string safe to SPEAK: strip code fences, `var = value` assignments,
+ *  axis tags like "(X)", markdown punctuation and approximation tildes, then
+ *  keep just the first sentence. Without this the TTS reads raw source — e.g.
+ *  "H_wall = 60" becomes the meaningless "H is 60". Narration is prose, not code. */
+function speakable(s: string, maxLen = 150): string {
+  let t = s
+    .replace(/```[\s\S]*?```/g, ' ') // code blocks
+    .replace(/\b[A-Za-z_]\w*\s*=\s*-?\d[\d.]*\b/g, ' ') // var = number
+    .replace(/\(\s*[XYZ]\s*\)/gi, ' ') // axis tags (X) (Y) (Z)
+    .replace(/[`*_#>{}[\]|]/g, ' ') // markdown / code punctuation
+    .replace(/~/g, '') // approximation tilde
+    .replace(/\s+/g, ' ')
+    .trim()
+  const m = /^(.*?[.!?])(\s|$)/.exec(t) // first sentence only
+  if (m?.[1]) t = m[1]
+  if (t.length > maxLen) t = `${t.slice(0, maxLen).replace(/\s+\S*$/, '')}…`
+  return t.replace(/[.!?]+$/, '').trim() // drop trailing punctuation; templates add their own
+
+}
+
 export function buildNarrationScript(
   spans: readonly Span[],
   title: string,
@@ -106,18 +126,18 @@ export function buildNarrationScript(
 ): string {
   const ev = reduceToSemanticEvents(spans)
   const ask = ev.find((e) => e.kind === 'understood_task')?.summary
-  const reply = [...ev].reverse().find((e) => e.kind === 'agent_reply')?.summary
   const edits = ev.filter((e) => e.kind === 'edited_code').length
   const cmds = ev.filter((e) => e.kind === 'ran_command').length
   const fails = ev.filter((e) => e.kind === 'observed_failure').length
-  const parts: string[] = [`${title}.`]
-  if (ask) parts.push(`The task: ${ask}.`)
+  const parts: string[] = [`${speakable(title)}.`]
+  // The brief, cleaned to its first plain sentence — NOT the raw agent reply
+  // (which is source code and reads as gibberish through TTS).
+  if (ask) parts.push(`The task: ${speakable(ask)}.`)
   const did: string[] = []
   if (edits) did.push(`${edits} code ${edits === 1 ? 'edit' : 'edits'}`)
   if (cmds) did.push(`${cmds} ${cmds === 1 ? 'command' : 'commands'}`)
   if (fails) did.push(`recovering from ${fails} ${fails === 1 ? 'failure' : 'failures'}`)
   if (did.length) parts.push(`The agent worked through ${did.join(', ')}.`)
-  if (reply) parts.push(reply)
   if (result) {
     const total = Object.keys(result.checks).length
     const passed = Object.values(result.checks).filter(Boolean).length
