@@ -23,11 +23,15 @@ export interface RunArtifacts {
   videos: MediaArtifact[]
   audios: MediaArtifact[]
   docs: MediaArtifact[]
+  /** Rendered images the agent produced (screenshots, render outputs). The
+   *  composed film reveals these full-frame — the visual payoff of a design run. */
+  renders: MediaArtifact[]
 }
 
 const VIDEO_RE = /^data:video\/|\.(mp4|webm|mov|m4v)(\?|$)/i
 const AUDIO_RE = /^data:audio\/|\.(mp3|wav|m4a|ogg|flac|aac)(\?|$)/i
 const DOC_RE = /^data:application\/pdf|\.(pdf)(\?|$)/i
+const IMAGE_RE = /^data:image\/(png|jpe?g|webp|gif)|\.(png|jpe?g|webp|gif)(\?|$)/i
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined
@@ -44,7 +48,7 @@ function candidates(span: Span): string[] {
     if (s) out.push(s)
   }
   const a = obj(span.attributes)
-  if (a) for (const k of ['video', 'audio', 'pdf', 'doc', 'url', 'href', 'artifact', 'output', 'src', 'file']) push(a[k])
+  if (a) for (const k of ['screenshot', 'image', 'video', 'audio', 'pdf', 'doc', 'url', 'href', 'artifact', 'output', 'src', 'file']) push(a[k])
   push((span as { result?: unknown }).result)
   const r = obj((span as { result?: unknown }).result)
   if (r) for (const k of ['url', 'src', 'video', 'audio', 'pdf', 'path', 'artifact']) push(r[k])
@@ -55,12 +59,17 @@ function candidates(span: Span): string[] {
 
 /** Extract video / audio / doc artifacts an agent produced, in trace order. */
 export function extractArtifacts(spans: readonly Span[]): RunArtifacts {
-  const out: RunArtifacts = { videos: [], audios: [], docs: [] }
+  const out: RunArtifacts = { videos: [], audios: [], docs: [], renders: [] }
   const seen = new Set<string>()
   for (const span of [...spans].sort((x, y) => x.startedAt - y.startedAt)) {
     const label = span.kind === 'tool' ? (span as { toolName?: string }).toolName ?? span.name : span.name
     for (const c of candidates(span)) {
       if (seen.has(c)) continue
+      // Only inline-embeddable sources are real artifacts. A bare relative path
+      // (e.g. a tool's `output: "model.png"` arg) matches the extension regexes
+      // but can't be rendered in a self-contained capsule — it would show a
+      // broken-image glyph. Require a data: URI or absolute http(s) URL.
+      if (!/^data:/i.test(c) && !/^https?:\/\//i.test(c)) continue
       if (VIDEO_RE.test(c)) {
         out.videos.push({ src: c, label, spanId: span.spanId })
         seen.add(c)
@@ -69,6 +78,9 @@ export function extractArtifacts(spans: readonly Span[]): RunArtifacts {
         seen.add(c)
       } else if (DOC_RE.test(c)) {
         out.docs.push({ src: c, label, spanId: span.spanId })
+        seen.add(c)
+      } else if (IMAGE_RE.test(c)) {
+        out.renders.push({ src: c, label, spanId: span.spanId })
         seen.add(c)
       }
     }

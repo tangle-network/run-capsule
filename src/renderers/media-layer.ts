@@ -42,6 +42,77 @@ export function renderVideoLayerHtml(src: string, opts: MediaLayerOptions = {}):
   </script></body></html>`
 }
 
+export interface ImageRevealOptions {
+  title?: string
+  /** ms each image is held (incl. crossfade). Default 2600. */
+  perMs?: number
+}
+
+/**
+ * Reveal a sequence of rendered images full-frame — each held with a slow
+ * Ken-Burns push and crossfaded to the next, with a per-image caption chip.
+ * For CAD/design runs this is the payoff shot: the agent's actual rendered
+ * output (round-by-round) shown big, not buried as tool-call text. Sets
+ * `data-capsule-done` after the last image's hold.
+ */
+export function renderImageRevealHtml(
+  images: ReadonlyArray<{ src: string; caption?: string }>,
+  opts: ImageRevealOptions = {},
+): string {
+  const title = opts.title ?? 'Rendered result'
+  const perMs = opts.perMs ?? 2600
+  const json = JSON.stringify(images.map((i) => ({ src: i.src, caption: i.caption ?? '' })))
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/><title>${esc(title)}</title><style>
+  :root{color-scheme:dark;--per:${perMs}ms}*{box-sizing:border-box}
+  body{margin:0;height:100vh;background:radial-gradient(circle at 50% 38%, #141d31 0%, #06080f 72%);color:#e6edf3;
+    font:14px/1.5 ui-sans-serif,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;overflow:hidden}
+  h1{font-size:1.05rem;font-weight:600;color:#9aa7b5;margin:0;letter-spacing:.02em}
+  .stage{position:relative;width:min(880px,90vw);aspect-ratio:16/10;display:flex;align-items:center;justify-content:center}
+  .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transform:scale(1.015);
+    transition:opacity .6s ease;filter:drop-shadow(0 26px 64px rgba(0,0,0,.6))}
+  .stage img.on{opacity:1;animation:kb var(--per) ease forwards}
+  @keyframes kb{from{transform:scale(1.015)}to{transform:scale(1.075)}}
+  .cap{min-height:1.4em;color:#aeb9ff;font-weight:600;font-size:.95rem;letter-spacing:.04em;opacity:0;transition:opacity .4s ease}
+  .cap.show{opacity:1}
+  .empty{color:#5b6b7d;padding:40px}
+  </style></head><body>
+  <h1>🏠 ${esc(title)}</h1>
+  <div class="stage" id="stage"><img id="a"/><img id="b"/></div>
+  <div class="cap" id="cap"></div>
+  <script>
+    var IMGS=${json}, PER=${perMs};
+    var cap=document.getElementById('cap'), a=document.getElementById('a'), b=document.getElementById('b');
+    var done=function(){document.body.setAttribute('data-capsule-done','true')};
+    function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+    // Decode the next frame INTO the back buffer before crossfading it to front:
+    // only two images are ever live and they load sequentially, so the concurrent
+    // image-decode that fails the largest frame in a sandboxed compositing iframe
+    // can't happen. Each load is capped so a stuck frame can't stall the recorder.
+    function ready(im,src){return new Promise(function(res){
+      var fin=false, ok=function(){if(!fin){fin=true;res();}};
+      im.onload=ok; im.onerror=ok; im.src=src;
+      if(im.decode){im.decode().then(ok).catch(function(){});}
+    });}
+    if(!IMGS.length){document.getElementById('stage').innerHTML='<span class="empty">No rendered output.</span>';done();}
+    else{
+      var front=a, back=b;
+      (async function(){
+        for(var n=0;n<IMGS.length;n++){
+          await Promise.race([ready(back, IMGS[n].src), sleep(1400)]);
+          cap.textContent=IMGS[n].caption||''; cap.classList.toggle('show', !!IMGS[n].caption);
+          back.classList.add('on'); front.classList.remove('on');
+          var tmp=front; front=back; back=tmp;
+          await sleep(PER);
+        }
+        done();
+      })();
+      // Absolute safety net: always signal done even if a load stalls.
+      setTimeout(done, IMGS.length*(PER+1500)+2500);
+    }
+  </script></body></html>`
+}
+
 /** A layer that shows an agent-generated document (PDF data-URI or URL). */
 export function renderDocLayerHtml(src: string, opts: MediaLayerOptions = {}): string {
   const title = opts.title ?? 'Generated document'

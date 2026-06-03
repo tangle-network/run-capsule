@@ -46,7 +46,8 @@ export type { Composition, Shot, ShotLayer, LayerFrame, Transition, AutoComposeO
 // Orbit (rendered-model spin) + agent-generated media layers (video/doc).
 export { renderOrbitCapsuleHtml } from './renderers/orbit-capsule.js'
 export type { OrbitCapsuleOptions } from './renderers/orbit-capsule.js'
-export { renderVideoLayerHtml, renderDocLayerHtml } from './renderers/media-layer.js'
+export { renderVideoLayerHtml, renderDocLayerHtml, renderImageRevealHtml } from './renderers/media-layer.js'
+export type { ImageRevealOptions } from './renderers/media-layer.js'
 
 // Multi-modal artifacts + audio (narration / music / mux).
 export { extractArtifacts, buildNarrationScript } from './artifacts.js'

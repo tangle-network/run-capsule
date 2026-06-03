@@ -9,6 +9,7 @@ import {
 } from './renderers/conversation-capsule.js'
 import { renderTerminalCapsuleHtml, terminalStepsFromSpans } from './renderers/terminal-capsule.js'
 import { renderScreenCapsuleHtml, screenStepsFromSpans } from './renderers/screen-capsule.js'
+import { extractArtifacts } from './artifacts.js'
 import { supportedKinds } from './run-to-video.js'
 
 const SPANS: Span[] = [
@@ -65,6 +66,32 @@ describe('run-capsule renderers', () => {
 
   it('empty trace still yields a graceful replay-only set', () => {
     expect(supportedKinds([])).toEqual(['replay'])
+  })
+})
+
+describe('extractArtifacts (only inline-embeddable sources are artifacts)', () => {
+  it('surfaces the screenshot data URI as a render, NOT the tool arg filename', () => {
+    // Regression: a render.screenshot span carries the real image in
+    // attributes.screenshot (data URI) AND a bare output filename in args.url
+    // ("model.png"). The filename matches the .png extension regex but cannot be
+    // rendered in a self-contained capsule — embedding it produced a broken-image
+    // glyph in the composed film. Only data:/http(s) sources count.
+    const spans: Span[] = [
+      { spanId: 's', runId: 'r', kind: 'tool', name: 'render.screenshot', toolName: 'render.screenshot', args: { action: 'capture_full', url: 'model.png' }, attributes: { screenshot: 'data:image/png;base64,iVBORw0KGgoREAL' }, startedAt: 1, endedAt: 2, status: 'ok' } as Span,
+    ]
+    const { renders } = extractArtifacts(spans)
+    expect(renders.length).toBe(1)
+    expect(renders[0]?.src).toBe('data:image/png;base64,iVBORw0KGgoREAL')
+    expect(renders.some((r) => r.src === 'model.png')).toBe(false)
+  })
+
+  it('accepts an absolute http(s) image URL but rejects a bare relative path', () => {
+    const spans: Span[] = [
+      { spanId: 'a', runId: 'r', kind: 'tool', name: 'gen', toolName: 'gen', result: { url: 'https://cdn.x/out.png' }, startedAt: 1, endedAt: 2, status: 'ok' } as Span,
+      { spanId: 'b', runId: 'r', kind: 'tool', name: 'gen', toolName: 'gen', args: { output: './local/frame.png' }, startedAt: 3, endedAt: 4, status: 'ok' } as Span,
+    ]
+    const { renders } = extractArtifacts(spans)
+    expect(renders.map((r) => r.src)).toEqual(['https://cdn.x/out.png'])
   })
 })
 

@@ -11,7 +11,7 @@
  * finishes (the recorder's done-signal).
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RunGroup } from '@tangle-network/sandbox-ui/run'
 
@@ -66,28 +66,56 @@ function App({ bundle }: { bundle: Bundle }) {
     [asstMsg, asstParts, revealed],
   )
 
+  // Stick-to-bottom for the recording: as parts stream in the RunGroup grows
+  // past the viewport, so keep the newest content in frame. A headless capture
+  // has no user, so we pin unconditionally (the product's useAutoScroll defers
+  // to user scroll-up, which would freeze the view mid-recording) and re-pin
+  // across a few frames to absorb late growth — thinking blocks expanding after
+  // a part is revealed.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const pin = () => {
+      el.scrollTop = el.scrollHeight
+    }
+    pin()
+    const raf = requestAnimationFrame(pin)
+    const ts = [160, 420, 800].map((ms) => setTimeout(pin, ms))
+    return () => {
+      cancelAnimationFrame(raf)
+      for (const t of ts) clearTimeout(t)
+    }
+  }, [revealed])
+
   return (
-    <div data-sandbox-ui style={{ minHeight: '100vh', background: 'var(--md3-surface, #0a0a14)', padding: '28px 0' }}>
-      <div style={{ width: 'min(880px, 94vw)', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {userText ? (
-          <div
-            style={{
-              alignSelf: 'flex-start',
-              maxWidth: '85%',
-              background: 'var(--depth-2, #141328)',
-              border: '1px solid var(--border-default, rgba(100,100,148,.18))',
-              borderRadius: 16,
-              borderBottomLeftRadius: 4,
-              padding: '12px 16px',
-              color: 'var(--text-primary, #e6edf3)',
-              font: '15px/1.5 ui-sans-serif, system-ui, sans-serif',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {userText}
-          </div>
-        ) : null}
-        <RunGroup run={runForGroup} partMap={livePartMap} collapsed={false} onToggle={() => {}} />
+    <div
+      data-sandbox-ui
+      style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--md3-surface, #0a0a14)', overflow: 'hidden' }}
+    >
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '28px 0' }}>
+        <div style={{ width: 'min(880px, 94vw)', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {userText ? (
+            <div
+              style={{
+                alignSelf: 'flex-start',
+                maxWidth: '85%',
+                background: 'var(--depth-2, #141328)',
+                border: '1px solid var(--border-default, rgba(100,100,148,.18))',
+                borderRadius: 16,
+                borderBottomLeftRadius: 4,
+                padding: '12px 16px',
+                color: 'var(--text-primary, #e6edf3)',
+                font: '15px/1.5 ui-sans-serif, system-ui, sans-serif',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {userText}
+            </div>
+          ) : null}
+          <RunGroup run={runForGroup} partMap={livePartMap} collapsed={false} onToggle={() => {}} />
+          <div style={{ height: 48 }} />
+        </div>
       </div>
     </div>
   )

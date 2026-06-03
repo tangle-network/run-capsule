@@ -47,8 +47,10 @@ function normalizeTool(span: Extract<Span, { kind: 'tool' }>): { tool: string; i
   }
   if (/grep|search/.test(tn)) return { tool: 'grep', input: a ?? span.args }
   if (/glob|find|list/.test(tn)) return { tool: 'glob', input: a ?? span.args }
-  if (/browser|playwright|navigate|goto|page|web|http|fetch|render|screenshot/.test(tn)) {
-    return { tool: 'web', input: a ?? span.args }
+  if (/browser|playwright|navigate|goto|page|web|http|fetch/.test(tn)) {
+    // 'fetch' is the real sandbox-ui tool vocab key; 'web' is not and would hit
+    // the unknown-tool fallback (which dumps raw args/output).
+    return { tool: 'fetch', input: a ?? span.args }
   }
   if (/shell|bash|exec|run|terminal|command|sandbox|process|openscad|npm|pnpm|git/.test(tn)) {
     const command = typeof span.args === 'string' ? span.args : str(a?.command) ?? str(a?.cmd) ?? span.toolName
@@ -118,6 +120,12 @@ export function traceToRunBundle(spans: readonly Span[]): RunBundle {
         assistantTexts.push(out)
       }
     } else if (s.kind === 'tool' || s.kind === 'sandbox') {
+      // Screenshots / rendered images are not run-timeline text: sandbox-ui's run
+      // view renders no images, so a data-URI dumped as tool output is just noise.
+      // They surface as dedicated full-frame reveal shots in the composed film.
+      const at = obj((s as { attributes?: unknown }).attributes)
+      const toolName = (s as { toolName?: string }).toolName ?? s.name
+      if (typeof at?.screenshot === 'string' || /screenshot|\brender\b|render\./i.test(toolName)) continue
       const tspan =
         s.kind === 'sandbox'
           ? ({ ...s, kind: 'tool', toolName: 'bash', args: { command: (s as { command?: string }).command ?? s.name } } as Extract<Span, { kind: 'tool' }>)

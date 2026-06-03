@@ -14,7 +14,7 @@
 import type { Span } from '@tangle-network/agent-eval'
 import { reduceToSemanticEvents } from '@tangle-network/agent-eval/storyboard'
 import { extractArtifacts } from './artifacts.js'
-import { renderDocLayerHtml, renderVideoLayerHtml } from './renderers/media-layer.js'
+import { renderDocLayerHtml, renderImageRevealHtml, renderVideoLayerHtml } from './renderers/media-layer.js'
 import { renderRunStudioHtml } from './studio/render.js'
 import { renderOrbitCapsuleHtml } from './renderers/orbit-capsule.js'
 
@@ -120,7 +120,10 @@ export function renderCompositionHtml(comp: Composition): string {
     var d=document.createElement('div'); d.className='shot'+(shot.transition==='slide'?' slidein':''); d.id='shot-'+shot.id;
     shot.layers.forEach(function(l){
       var f=document.createElement('iframe'); f.className='layer'; f.style.cssText='position:absolute;'+l.css;
-      f.setAttribute('sandbox','allow-scripts'); f.srcdoc=l.html; d.appendChild(f);
+      // allow-same-origin is required: a pure allow-scripts iframe has an opaque
+      // origin where data: image loads hang, blanking screenshot/render layers.
+      // Safe here — every layer is self-generated, redacted, local file:// HTML.
+      f.setAttribute('sandbox','allow-scripts allow-same-origin'); f.srcdoc=l.html; d.appendChild(f);
     });
     stage.appendChild(d); return d;
   }
@@ -163,11 +166,22 @@ export async function autoCompose(spans: readonly Span[], opts: AutoComposeOptio
   const brief = events.find((e) => e.kind === 'understood_task')?.summary ?? ''
   const finalReply = [...events].reverse().find((e) => e.kind === 'agent_reply')?.summary ?? ''
 
-  // Timeline shot length scales with how much the agent did.
-  const partish = spans.filter((s) => s.kind === 'tool' || s.kind === 'sandbox' || s.kind === 'llm').length
-  const timelineMs = Math.min(26_000, 3000 + partish * stepMs)
+  // Timeline shot length tracks the parts the studio actually reveals (mirrors
+  // trace-to-run: llm turns with output + non-screenshot tool calls) so the shot
+  // doesn't sit on a static final frame after the reveal finishes.
+  const inlineParts = spans.filter((s) => {
+    if (s.kind === 'llm') return typeof (s as { output?: unknown }).output === 'string' && ((s as { output?: string }).output ?? '').length > 0
+    if (s.kind === 'tool' || s.kind === 'sandbox') {
+      const at = (s as { attributes?: Record<string, unknown> }).attributes
+      const tn = ((s as { toolName?: string }).toolName ?? s.name) || ''
+      return !(typeof at?.screenshot === 'string' || /screenshot|\brender\b|render\./i.test(tn))
+    }
+    return false
+  }).length
+  const timelineMs = Math.min(24_000, 2600 + inlineParts * stepMs + 1500)
 
   const studioHtml = await renderRunStudioHtml(spans, { title, stepMs })
+  const artifacts = extractArtifacts(spans)
   const shots: Shot[] = []
   let t = 0
   const push = (durationMs: number, layers: ShotLayer[], caption?: string, transition: Transition = 'fade') => {
@@ -185,6 +199,23 @@ export async function autoCompose(spans: readonly Span[], opts: AutoComposeOptio
     })
   }
   push(timelineMs, timelineLayers, 'The agent works the task', 'fade')
+  // The visual payoff: the actual rendered output, full-frame, round-by-round.
+  // sandbox-ui's run view renders no images, so this is the ONLY place the
+  // agent's rendered artifact is seen — make it the hero, not a buried tool call.
+  if (artifacts.renders.length > 0) {
+    const perMs = 2800
+    const n = artifacts.renders.length
+    const imgs = artifacts.renders.map((r, idx) => ({
+      src: r.src,
+      caption: n > 1 ? (idx === n - 1 ? 'Final render' : `Iteration ${idx + 1}`) : 'Rendered output',
+    }))
+    push(
+      n * perMs + 2200,
+      [{ html: renderImageRevealHtml(imgs, { title: 'The rendered design', perMs }), frame: 'full' }],
+      'The rendered design',
+      'fade',
+    )
+  }
   if (opts.orbitFrames && opts.orbitFrames.length > 0) {
     push(
       6000,
@@ -196,7 +227,6 @@ export async function autoCompose(spans: readonly Span[], opts: AutoComposeOptio
   // Agent-generated media artifacts each get their own shot — the video the
   // agent produced, the document it wrote — so the film shows the OUTPUT, not
   // just the process.
-  const artifacts = extractArtifacts(spans)
   for (const v of artifacts.videos) {
     push(9000, [{ html: renderVideoLayerHtml(v.src, { title: 'Generated video', maxMs: 9000 }), frame: 'full' }], `Output: ${v.label}`, 'fade')
   }
