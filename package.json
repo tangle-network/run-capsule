@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/run-capsule",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Turn any agent run's trace into a shareable video — code/terminal/screen/conversation capsule animations, recorded headless and uploaded to a temp link. Secrets are redacted before upload. Consumer of @tangle-network/agent-eval/storyboard.",
   "type": "module",
   "license": "MIT",

@@ -274,6 +274,20 @@ describe('buildNarrationScript (closes on the verdict when scored)', () => {
     ]
     expect(buildNarrationScript(spans, 'House')).not.toMatch(/geometry gate/i)
   })
+
+  it('speaks clean prose — never raw code: no "H_wall = 60", no axis tags, drops the source reply', () => {
+    // Regression for the 3/10 VO: TTS was reading the brief's "(X)/(Y)" + the
+    // agent's raw .scad reply, so it said the meaningless "H is 60".
+    const spans: Span[] = [
+      { spanId: 'b', runId: 'r', kind: 'llm', name: 'brief', model: 'm', messages: [{ role: 'user', content: 'Write OpenSCAD for a two-story house. Requirements: footprint 80 (X) by 60 (Y), H_wall = 60 units.' }], startedAt: 0, endedAt: 1, status: 'ok' } as Span,
+      { spanId: 'a', runId: 'r', kind: 'llm', name: 'reply', model: 'm', messages: [{ role: 'user', content: 'x' }], output: 'W=80; D=60; H_wall=60; difference(){ cube([W,D,H_wall]); }', startedAt: 2, endedAt: 3, status: 'ok' } as Span,
+    ]
+    const vo = buildNarrationScript(spans, 'Agent designs a house', { resolved: true, score: 1, checks: { a: true, b: true } })
+    expect(vo).not.toMatch(/\([XYZ]\)|H_wall|W\s*=\s*80|=\s*60/) // no raw code / axis tags
+    expect(vo).not.toContain('difference(') // the source reply is dropped, not spoken
+    expect(vo).toContain('two-story house') // the cleaned brief survives
+    expect(vo).toContain('2 of 2 checks') // verdict still lands
+  })
 })
 
 describe('redactSpans (P0: never publish a live credential)', () => {
