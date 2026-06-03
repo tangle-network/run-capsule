@@ -88,9 +88,22 @@ export function extractArtifacts(spans: readonly Span[]): RunArtifacts {
   return out
 }
 
+/** The eval verdict, if the run was scored — lets narration name the outcome
+ *  (checks passed, resolved, score) so the VO lands on the scoreboard beat. */
+export interface NarrationResult {
+  resolved: boolean
+  score: number
+  checks: Record<string, boolean>
+}
+
 /** A short voiceover script derived from the run: the ask, the key beats, the
- *  outcome. Kept terse — it's narration, not a transcript. */
-export function buildNarrationScript(spans: readonly Span[], title: string): string {
+ *  outcome. Kept terse — it's narration, not a transcript. When a verdict is
+ *  given, it closes on the gate result so the VO matches the scoreboard shot. */
+export function buildNarrationScript(
+  spans: readonly Span[],
+  title: string,
+  result?: NarrationResult,
+): string {
   const ev = reduceToSemanticEvents(spans)
   const ask = ev.find((e) => e.kind === 'understood_task')?.summary
   const reply = [...ev].reverse().find((e) => e.kind === 'agent_reply')?.summary
@@ -105,5 +118,13 @@ export function buildNarrationScript(spans: readonly Span[], title: string): str
   if (fails) did.push(`recovering from ${fails} ${fails === 1 ? 'failure' : 'failures'}`)
   if (did.length) parts.push(`The agent worked through ${did.join(', ')}.`)
   if (reply) parts.push(reply)
+  if (result) {
+    const total = Object.keys(result.checks).length
+    const passed = Object.values(result.checks).filter(Boolean).length
+    parts.push(
+      `The geometry gate scored it ${passed} of ${total} checks ${result.resolved ? 'passed' : 'failed'}` +
+        `${result.resolved ? `, resolved, score ${result.score.toFixed(2)}.` : '.'}`,
+    )
+  }
   return parts.join(' ')
 }

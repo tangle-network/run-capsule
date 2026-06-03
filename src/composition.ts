@@ -17,6 +17,8 @@ import { extractArtifacts } from './artifacts.js'
 import { renderDocLayerHtml, renderImageRevealHtml, renderVideoLayerHtml } from './renderers/media-layer.js'
 import { renderRunStudioHtml } from './studio/render.js'
 import { renderOrbitCapsuleHtml } from './renderers/orbit-capsule.js'
+import { type EvalResult, renderScoreboardHtml, scoreboardDurationMs } from './renderers/scoreboard.js'
+import { renderIntroHtml, renderOutroHtml } from './renderers/title-cards.js'
 
 /** Where a layer sits within a shot's frame. */
 export type LayerFrame = 'full' | 'left' | 'right' | 'pip-br' | 'pip-bl' | 'pip-tr' | 'pip-tl'
@@ -42,6 +44,14 @@ export interface Composition {
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/** The mission line for the intro: the brief's lead sentence (before the first
+ *  newline / bullet / sentence break), trimmed of a trailing colon, capped. */
+function condenseBrief(brief: string): string {
+  const firstLine = brief.split('\n')[0]?.trim() ?? ''
+  const lead = (/^(.*?[.!?])(\s|$)/.exec(firstLine)?.[1] ?? firstLine).replace(/[:\s]+$/, '').trim()
+  return lead.length > 132 ? `${lead.slice(0, 129).trimEnd()}…` : lead
 }
 
 /** A simple branded title/summary card (its own self-contained layer). */
@@ -116,23 +126,31 @@ export function renderCompositionHtml(comp: Composition): string {
 <script>
   var SHOTS=${shotsJson}, TOTAL=${totalMs};
   var stage=document.getElementById('stage'), capEl=document.getElementById('cap'), captEl=document.getElementById('capt');
+  var LAST=SHOTS.length-1, lastFrame=null, done=false;
+  function finish(){ if(done) return; done=true; document.body.setAttribute('data-capsule-done','true'); }
   function mount(shot){
     var d=document.createElement('div'); d.className='shot'+(shot.transition==='slide'?' slidein':''); d.id='shot-'+shot.id;
+    var frames=[];
     shot.layers.forEach(function(l){
       var f=document.createElement('iframe'); f.className='layer'; f.style.cssText='position:absolute;'+l.css;
       // allow-same-origin is required: a pure allow-scripts iframe has an opaque
       // origin where data: image loads hang, blanking screenshot/render layers.
       // Safe here — every layer is self-generated, redacted, local file:// HTML.
-      f.setAttribute('sandbox','allow-scripts allow-same-origin'); f.srcdoc=l.html; d.appendChild(f);
+      f.setAttribute('sandbox','allow-scripts allow-same-origin'); f.srcdoc=l.html; d.appendChild(f); frames.push(f);
     });
-    stage.appendChild(d); return d;
+    stage.appendChild(d); d._frames=frames; return d;
   }
-  // Schedule each shot: mount + show at startMs, hide at end.
-  SHOTS.forEach(function(shot){
+  // Schedule each shot: mount + show at startMs, hide at end. The final shot is
+  // never auto-hidden — the film ends when that shot's own iframe reports done
+  // (so the outro fully lands regardless of timer drift), with TOTAL as a
+  // ceiling. Every other shot fades out at its end so the next can crossfade in.
+  SHOTS.forEach(function(shot, idx){
     setTimeout(function(){
       var d=mount(shot);
       requestAnimationFrame(function(){ d.classList.add('show'); });
       if(shot.caption){ captEl.textContent=shot.caption; capEl.classList.add('show'); }
+      else { capEl.classList.remove('show'); }
+      if(idx===LAST){ lastFrame=d._frames[0]; return; }
       setTimeout(function(){
         d.classList.remove('show');
         if(shot.caption) capEl.classList.remove('show');
@@ -140,7 +158,19 @@ export function renderCompositionHtml(comp: Composition): string {
       }, shot.durationMs);
     }, shot.startMs);
   });
-  setTimeout(function(){ document.body.setAttribute('data-capsule-done','true'); }, TOTAL+800);
+  // Poll the final shot's iframe for its done-signal; end the film a beat after.
+  var poll=setInterval(function(){
+    if(lastFrame){
+      try{
+        var doc=lastFrame.contentDocument;
+        if(doc && doc.body && doc.body.getAttribute('data-capsule-done')==='true'){
+          clearInterval(poll); setTimeout(finish, 500);
+        }
+      }catch(e){}
+    }
+  }, 120);
+  // Ceiling: never run past the scheduled total + a margin even if a signal stalls.
+  setTimeout(function(){ clearInterval(poll); finish(); }, TOTAL+2500);
 </script>
 </body></html>`
 }
@@ -151,12 +181,16 @@ export interface AutoComposeOptions {
   orbitFrames?: readonly string[]
   /** ms between revealing each run part in the timeline shot. Default 900. */
   stepMs?: number
+  /** The eval verdict this run was scored against. When present, an animated
+   *  scoreboard shot is pushed as the payoff (after the render reveal). */
+  result?: EvalResult
 }
 
 /**
  * Derive a good default film from a run's trace + (optional) rendered frames:
- *   intro card → the 1:1 run timeline (real RunGroup, streamed) → the spinning
- *   model (if frames given) → outro card.
+ *   cinematic intro → the 1:1 run timeline (real RunGroup, streamed) → the
+ *   full-frame render reveal → a real orbit of the finished model → the animated
+ *   verdict scoreboard (if a result is given) → cinematic outro.
  * Override the returned Composition.shots to re-cut creatively.
  */
 export async function autoCompose(spans: readonly Span[], opts: AutoComposeOptions = {}): Promise<Composition> {
@@ -165,6 +199,9 @@ export async function autoCompose(spans: readonly Span[], opts: AutoComposeOptio
   const events = reduceToSemanticEvents(spans)
   const brief = events.find((e) => e.kind === 'understood_task')?.summary ?? ''
   const finalReply = [...events].reverse().find((e) => e.kind === 'agent_reply')?.summary ?? ''
+  // The intro frames the mission, not the full spec — take the lead sentence/line
+  // of the brief so a verbose requirements list doesn't crowd the title card.
+  const missionLine = condenseBrief(brief)
 
   // Timeline shot length tracks the parts the studio actually reveals (mirrors
   // trace-to-run: llm turns with output + non-screenshot tool calls) so the shot
@@ -178,64 +215,108 @@ export async function autoCompose(spans: readonly Span[], opts: AutoComposeOptio
     }
     return false
   }).length
-  const timelineMs = Math.min(24_000, 2600 + inlineParts * stepMs + 1500)
+  const timelineMs = Math.min(20_000, 2600 + inlineParts * stepMs + 1200)
 
   const studioHtml = await renderRunStudioHtml(spans, { title, stepMs })
   const artifacts = extractArtifacts(spans)
+  const hasOrbit = !!(opts.orbitFrames && opts.orbitFrames.length > 0)
   const shots: Shot[] = []
   let t = 0
+  // Shots share the stage and crossfade — overlap each new shot's in-point a beat
+  // (≈420ms) into the prior shot's tail so the cut breathes instead of cutting to
+  // a black gap while the next iframe mounts. Never sit static.
+  const OVERLAP = 420
   const push = (durationMs: number, layers: ShotLayer[], caption?: string, transition: Transition = 'fade') => {
     shots.push({ id: `s${shots.length}`, startMs: t, durationMs, transition, layers, caption })
-    t += durationMs
+    t += Math.max(0, durationMs - OVERLAP)
   }
 
-  push(3200, [{ html: renderCardHtml({ eyebrow: 'Agent run', title, subtitle: brief.slice(0, 160) }), frame: 'full' }])
-  // The 1:1 timeline is the spine; if we have a spin, picture-in-picture it bottom-right.
+  // 1. Cinematic intro — the task framed as a mission.
+  push(4200, [{ html: renderIntroHtml(title, { eyebrow: 'Agent mission', subtitle: missionLine }), frame: 'full' }])
+
+  // 2. The 1:1 run timeline is the spine; if we have a spin, PiP it bottom-right.
   const timelineLayers: ShotLayer[] = [{ html: studioHtml, frame: 'full' }]
-  if (opts.orbitFrames && opts.orbitFrames.length > 0) {
+  if (hasOrbit) {
     timelineLayers.push({
-      html: renderOrbitCapsuleHtml(opts.orbitFrames, { title: '', fps: 24, revolutions: 99 }),
+      html: renderOrbitCapsuleHtml(opts.orbitFrames as readonly string[], { title: '', fps: 24, revolutions: 999 }),
       frame: 'pip-br',
     })
   }
   push(timelineMs, timelineLayers, 'The agent works the task', 'fade')
-  // The visual payoff: the actual rendered output, full-frame, round-by-round.
+
+  // 3. The visual payoff: the actual rendered output, full-frame, round-by-round.
   // sandbox-ui's run view renders no images, so this is the ONLY place the
   // agent's rendered artifact is seen — make it the hero, not a buried tool call.
   if (artifacts.renders.length > 0) {
-    const perMs = 2800
+    const perMs = 3000
     const n = artifacts.renders.length
     const imgs = artifacts.renders.map((r, idx) => ({
       src: r.src,
       caption: n > 1 ? (idx === n - 1 ? 'Final render' : `Iteration ${idx + 1}`) : 'Rendered output',
     }))
     push(
-      n * perMs + 2200,
+      n * perMs + 1600,
       [{ html: renderImageRevealHtml(imgs, { title: 'The rendered design', perMs }), frame: 'full' }],
       'The rendered design',
       'fade',
     )
   }
-  if (opts.orbitFrames && opts.orbitFrames.length > 0) {
+
+  // 4. The hero: a real 360° orbit of the finished model.
+  if (hasOrbit) {
     push(
-      6000,
-      [{ html: renderOrbitCapsuleHtml(opts.orbitFrames, { title: 'The result', fps: 24, revolutions: 3 }), frame: 'full' }],
-      'The finished model',
+      7000,
+      [{ html: renderOrbitCapsuleHtml(opts.orbitFrames as readonly string[], { title: 'The finished model', fps: 30, revolutions: 3 }), frame: 'full' }],
+      'A full turn around the result',
       'fade',
     )
   }
-  // Agent-generated media artifacts each get their own shot — the video the
-  // agent produced, the document it wrote — so the film shows the OUTPUT, not
-  // just the process.
+
+  // 5. Agent-generated media artifacts each get their own shot.
   for (const v of artifacts.videos) {
     push(9000, [{ html: renderVideoLayerHtml(v.src, { title: 'Generated video', maxMs: 9000 }), frame: 'full' }], `Output: ${v.label}`, 'fade')
   }
   for (const d of artifacts.docs) {
     push(6000, [{ html: renderDocLayerHtml(d.src, { title: 'Generated document', maxMs: 6000 }), frame: 'full' }], `Output: ${d.label}`, 'fade')
   }
+
+  // 6. The verdict scoreboard — the payoff. Each check lands, then the big tally.
+  if (opts.result) {
+    push(
+      scoreboardDurationMs(opts.result) + 700,
+      [{ html: renderScoreboardHtml(opts.result), frame: 'full' }],
+      'Scored by the geometry gate',
+      'fade',
+    )
+  }
+
+  // 7. Cinematic outro — outcome + sign-off. With a verdict, the outcome is
+  // stated cleanly (the raw final reply is often the artifact itself, e.g. the
+  // .scad source — not subtitle material), with the gate result as stat chips.
+  const r = opts.result
+  const stats = r
+    ? [
+        `${Object.values(r.checks).filter(Boolean).length}/${Object.keys(r.checks).length} checks`,
+        `score ${r.score.toFixed(2)}`,
+      ]
+    : undefined
+  const outroSubtitle = r
+    ? r.resolved
+      ? 'Authored, compiled, rendered — and cleared every geometry check.'
+      : 'The run completed; the verdict is in.'
+    : condenseBrief(finalReply)
   push(
-    3600,
-    [{ html: renderCardHtml({ eyebrow: 'Done', title: 'Verified by the real engine', subtitle: finalReply.slice(0, 160) }), frame: 'full' }],
+    4800,
+    [
+      {
+        html: renderOutroHtml(r ? (r.resolved ? 'Verified by the real engine' : 'Run complete') : 'Run complete', {
+          eyebrow: r?.resolved ? 'Resolved' : 'Done',
+          subtitle: outroSubtitle,
+          stats,
+        }),
+        frame: 'full',
+      },
+    ],
     undefined,
     'fade',
   )
