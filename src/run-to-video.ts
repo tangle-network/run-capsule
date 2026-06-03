@@ -33,6 +33,7 @@ import {
   renderConversationCapsuleHtml,
 } from './renderers/conversation-capsule.js'
 import { renderOrbitCapsuleHtml } from './renderers/orbit-capsule.js'
+import type { EvalResult } from './renderers/scoreboard.js'
 import { renderScreenCapsuleHtml, screenStepsFromSpans } from './renderers/screen-capsule.js'
 import { renderTerminalCapsuleHtml, terminalStepsFromSpans } from './renderers/terminal-capsule.js'
 import { renderRunStudioHtml } from './studio/render.js'
@@ -65,6 +66,8 @@ export interface RunToVideoOptions {
   runId?: string
   /** Ordered rendered-model frames (data URIs) for the orbit/composed shots. */
   orbitFrames?: readonly string[]
+  /** Eval verdict for the run — drives the composed film's scoreboard shot. */
+  result?: EvalResult
   /** ms between revealing each part in studio/composed timelines. */
   stepMs?: number
   /** Add a synthesized VO narration track (needs routerKey). */
@@ -127,7 +130,7 @@ async function renderKind(
       return renderOrbitCapsuleHtml(opts.orbitFrames ?? [], { title: `${title} — rendered` })
     case 'composed':
       return renderCompositionHtml(
-        await autoCompose(spans, { title, orbitFrames: opts.orbitFrames, stepMs: opts.stepMs }),
+        await autoCompose(spans, { title, orbitFrames: opts.orbitFrames, stepMs: opts.stepMs, result: opts.result }),
       )
   }
 }
@@ -166,7 +169,7 @@ async function maybeAddAudio(
     // agent-generated audio artifacts ride first (full level)
     for (const a of extractArtifacts(spans).audios) tracks.push({ path: a.src, gain: 1 })
     if (opts.narrate && opts.routerKey) {
-      const script = buildNarrationScript(spans, title)
+      const script = buildNarrationScript(spans, title, opts.result)
       const vo = await synthesizeNarration(script, {
         routerBaseUrl: opts.routerBaseUrl ?? 'https://router.tangle.tools/v1',
         routerKey: opts.routerKey,

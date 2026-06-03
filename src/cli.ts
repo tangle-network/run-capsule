@@ -16,6 +16,7 @@ import { spansFromClaudeMessages } from './adapters/claude-messages.js'
 import { spansFromPlaywrightResult } from './adapters/playwright.js'
 import { spansFromRuntimeEvents } from './adapters/runtime-events.js'
 import { spansFromWorkdir } from './adapters/workdir.js'
+import type { EvalResult } from './renderers/scoreboard.js'
 import { type CapsuleKind, runToVideo } from './run-to-video.js'
 import type { LitterboxExpiry, ShareHost } from './upload.js'
 
@@ -34,6 +35,7 @@ interface Args {
   title: string
   outDir: string
   orbitDir?: string
+  result?: string
   narrate: boolean
   music: boolean
   voice?: string
@@ -60,6 +62,7 @@ function parse(argv: string[]): Args {
       case '--title': a.title = argv[++i] ?? a.title; break
       case '--out': a.outDir = path.resolve(argv[++i] ?? a.outDir); break
       case '--orbit-dir': a.orbitDir = argv[++i]; break
+      case '--result': a.result = argv[++i]; break
       case '--narrate': a.narrate = true; break
       case '--music': a.music = true; break
       case '--voice': a.voice = argv[++i]; break
@@ -86,6 +89,7 @@ function help(): void {
                        + opt-in: studio (1:1 sandbox-ui run view),
                          orbit (rendered-model spin), composed (sequenced film)
   --orbit-dir <dir>    Dir of rendered frames (PNG) for orbit/composed shots
+  --result <f.json>    Eval verdict JSON → animated scoreboard shot in the film
   --narrate            Add synthesized VO narration (needs ROUTER_KEY env)
   --music              Add a subtle music bed
   --voice <v>          TTS voice (default alloy)
@@ -142,11 +146,13 @@ async function main() {
         })
     : undefined
 
+  const result = a.result ? (readJson(a.result) as EvalResult) : undefined
+
   console.log(`\nrun-capsule  (${spans.length} spans) → ${a.host}${a.host === 'litterbox' ? ` (${a.expiry})` : ''}`)
   const { runDir, results } = await runToVideo(spans, {
     title: a.title, kinds: a.kinds, outDir: a.outDir,
     upload: a.upload, host: a.host, expiry: a.expiry, toMp4: a.mp4,
-    orbitFrames,
+    orbitFrames, result,
     narrate: a.narrate, music: a.music, voice: a.voice,
     routerKey: process.env.ROUTER_KEY, routerBaseUrl: process.env.ROUTER_BASE,
   })

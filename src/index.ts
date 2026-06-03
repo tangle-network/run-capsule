@@ -49,6 +49,12 @@ export type { OrbitCapsuleOptions } from './renderers/orbit-capsule.js'
 export { renderVideoLayerHtml, renderDocLayerHtml, renderImageRevealHtml } from './renderers/media-layer.js'
 export type { ImageRevealOptions } from './renderers/media-layer.js'
 
+// Verdict scoreboard + cinematic intro/outro bookend cards.
+export { renderScoreboardHtml, scoreboardDurationMs } from './renderers/scoreboard.js'
+export type { EvalResult, ScoreboardOptions } from './renderers/scoreboard.js'
+export { renderIntroHtml, renderOutroHtml } from './renderers/title-cards.js'
+export type { IntroOptions, OutroOptions } from './renderers/title-cards.js'
+
 // Multi-modal artifacts + audio (narration / music / mux).
 export { extractArtifacts, buildNarrationScript } from './artifacts.js'
 export type { RunArtifacts, MediaArtifact } from './artifacts.js'

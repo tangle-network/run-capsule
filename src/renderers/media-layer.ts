@@ -61,19 +61,25 @@ export function renderImageRevealHtml(
 ): string {
   const title = opts.title ?? 'Rendered result'
   const perMs = opts.perMs ?? 2600
+  const fadeMs = 560
   const json = JSON.stringify(images.map((i) => ({ src: i.src, caption: i.caption ?? '' })))
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/><title>${esc(title)}</title><style>
-  :root{color-scheme:dark;--per:${perMs}ms}*{box-sizing:border-box}
+  :root{color-scheme:dark;--per:${perMs}ms;--fade:${fadeMs}ms}*{box-sizing:border-box}
   body{margin:0;height:100vh;background:radial-gradient(circle at 50% 38%, #141d31 0%, #06080f 72%);color:#e6edf3;
     font:14px/1.5 ui-sans-serif,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;overflow:hidden}
-  h1{font-size:1.05rem;font-weight:600;color:#9aa7b5;margin:0;letter-spacing:.02em}
-  .stage{position:relative;width:min(880px,90vw);aspect-ratio:16/10;display:flex;align-items:center;justify-content:center}
-  .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transform:scale(1.015);
-    transition:opacity .6s ease;filter:drop-shadow(0 26px 64px rgba(0,0,0,.6))}
-  .stage img.on{opacity:1;animation:kb var(--per) ease forwards}
-  @keyframes kb{from{transform:scale(1.015)}to{transform:scale(1.075)}}
-  .cap{min-height:1.4em;color:#aeb9ff;font-weight:600;font-size:.95rem;letter-spacing:.04em;opacity:0;transition:opacity .4s ease}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(120% 120% at 50% 48%, transparent 60%, rgba(3,5,12,.6) 100%)}
+  h1{font-size:1.05rem;font-weight:600;color:#9aa7b5;margin:0;letter-spacing:.02em;z-index:2}
+  .stage{position:relative;width:min(880px,90vw);aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;z-index:2}
+  /* Two stacked buffers, opacity JS-driven (no implicit class toggles).
+     Invariant: a buffer's src is overwritten only after its opacity has fully
+     reached 0, so two distinct images are never partly visible at once. */
+  .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;
+    transition:opacity var(--fade) ease;filter:drop-shadow(0 26px 64px rgba(0,0,0,.6));will-change:opacity,transform}
+  .stage img.kb{animation:kb var(--per) linear forwards}
+  @keyframes kb{from{transform:scale(1.01)}to{transform:scale(1.07)}}
+  .cap{min-height:1.4em;color:#aeb9ff;font-weight:600;font-size:.95rem;letter-spacing:.04em;opacity:0;transition:opacity .4s ease;z-index:2}
   .cap.show{opacity:1}
   .empty{color:#5b6b7d;padding:40px}
   </style></head><body>
@@ -81,14 +87,13 @@ export function renderImageRevealHtml(
   <div class="stage" id="stage"><img id="a"/><img id="b"/></div>
   <div class="cap" id="cap"></div>
   <script>
-    var IMGS=${json}, PER=${perMs};
+    var IMGS=${json}, PER=${perMs}, FADE=${fadeMs};
     var cap=document.getElementById('cap'), a=document.getElementById('a'), b=document.getElementById('b');
     var done=function(){document.body.setAttribute('data-capsule-done','true')};
     function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
-    // Decode the next frame INTO the back buffer before crossfading it to front:
-    // only two images are ever live and they load sequentially, so the concurrent
-    // image-decode that fails the largest frame in a sandboxed compositing iframe
-    // can't happen. Each load is capped so a stuck frame can't stall the recorder.
+    function raf(){return new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r);});});}
+    // Decode the next frame INTO the hidden back buffer (opacity 0) before
+    // crossfading. Each load is capped so a stuck frame can't stall the recorder.
     function ready(im,src){return new Promise(function(res){
       var fin=false, ok=function(){if(!fin){fin=true;res();}};
       im.onload=ok; im.onerror=ok; im.src=src;
@@ -99,16 +104,24 @@ export function renderImageRevealHtml(
       var front=a, back=b;
       (async function(){
         for(var n=0;n<IMGS.length;n++){
-          await Promise.race([ready(back, IMGS[n].src), sleep(1400)]);
+          // 1. Stage the next image in the (invisible) back buffer.
+          back.classList.remove('kb'); back.style.transform='scale(1.01)';
+          await Promise.race([ready(back, IMGS[n].src), sleep(1500)]);
+          await raf(); // ensure the new src + reset transform are committed before we fade
+          // 2. Crossfade: back rises while front falls — equal-and-opposite, so the
+          //    composited result holds full luminance with no double-image flash.
           cap.textContent=IMGS[n].caption||''; cap.classList.toggle('show', !!IMGS[n].caption);
-          back.classList.add('on'); front.classList.remove('on');
+          back.style.opacity='1'; back.classList.add('kb'); front.style.opacity='0';
+          await sleep(FADE);
+          // 3. Fade complete — front is fully gone. Now it's safe to reuse it.
+          front.classList.remove('kb');
           var tmp=front; front=back; back=tmp;
-          await sleep(PER);
+          await sleep(Math.max(0, PER-FADE));
         }
         done();
       })();
       // Absolute safety net: always signal done even if a load stalls.
-      setTimeout(done, IMGS.length*(PER+1500)+2500);
+      setTimeout(done, IMGS.length*(PER+1600)+2500);
     }
   </script></body></html>`
 }
