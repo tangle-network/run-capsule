@@ -26,7 +26,7 @@ import { buildNarrationScript, extractArtifacts } from './artifacts.js'
 import { autoCompose, renderCompositionHtml } from './composition.js'
 import { directStoryboard } from './direct.js'
 import { redactSpans } from './redact.js'
-import { recordHtmlToVideo } from './record.js'
+import { recordHtmlToVideo, transcodeToMp4 } from './record.js'
 import { renderCodeCapsuleHtml } from './renderers/code-capsule.js'
 import {
   conversationStepsFromSpans,
@@ -81,16 +81,35 @@ export interface RunToVideoOptions {
   voice?: string
   /** Which kinds get the audio pass. Default: the film kinds (composed/studio/replay). */
   audioKinds?: CapsuleKind[]
+  /**
+   * Path to an already-rendered run video (e.g. the browser driver's
+   * `recording.webm` with its cursor + reasoning overlay baked in). When set,
+   * it is ingested as the `screen` capsule — transcoded to mp4 and uploaded as
+   * is — and the screenshot-replay screen capsule is suppressed (the real
+   * recording supersedes it). Reuses the driver's overlay instead of rebuilding
+   * one. The other capsules still render from the trace.
+   */
+  video?: string
 }
 
 export interface CapsuleResult {
   kind: CapsuleKind
-  htmlPath: string
+  /** The capsule's source HTML. Absent for an ingested (passthrough) video. */
+  htmlPath?: string
   /** Absent if recording failed. */
   videoPath?: string
   url?: string
   /** Present if this capsule failed to record or upload — the others still ran. */
   error?: string
+}
+
+/**
+ * Which capsules to actually render. An ingested external video becomes the
+ * `screen` capsule, so the screenshot-replay screen capsule would be a
+ * redundant second take — drop it.
+ */
+export function resolveKinds(kinds: readonly CapsuleKind[], hasVideo: boolean): CapsuleKind[] {
+  return hasVideo ? kinds.filter((k) => k !== 'screen') : [...kinds]
 }
 
 /** Which capsules does this trace actually have content for? */
@@ -190,6 +209,34 @@ async function maybeAddAudio(
   }
 }
 
+/**
+ * Bring an already-rendered run video into the capsule set as the `screen`
+ * capsule: copy it into the run dir, transcode to mp4 (reusing the recorder's
+ * H.264 path), run the optional audio pass, and upload. No HTML, no re-render —
+ * the driver's overlay is the source of truth, used as-is.
+ */
+async function ingestVideoCapsule(
+  src: string,
+  runDir: string,
+  title: string,
+  spans: readonly Span[],
+  opts: RunToVideoOptions,
+): Promise<CapsuleResult> {
+  if (!fs.existsSync(src)) throw new Error(`--video not found: ${src}`)
+  const ext = (path.extname(src) || '.webm').toLowerCase()
+  let videoPath = path.join(runDir, `screen${ext}`)
+  fs.copyFileSync(src, videoPath)
+  if (ext !== '.mp4' && (opts.toMp4 ?? true)) {
+    videoPath = transcodeToMp4(videoPath, path.join(runDir, 'screen.mp4')) ?? videoPath
+  }
+  videoPath = await maybeAddAudio(videoPath, 'screen', spans, title, opts)
+  let url: string | undefined
+  if (opts.upload ?? true) {
+    url = await uploadToShareHost(videoPath, { host: opts.host, expiry: opts.expiry })
+  }
+  return { kind: 'screen', videoPath, url }
+}
+
 export async function runToVideo(
   spans: readonly Span[],
   opts: RunToVideoOptions,
@@ -198,7 +245,9 @@ export async function runToVideo(
   // Strip secrets BEFORE anything is rendered/recorded/uploaded — the clip is
   // published. Everything downstream operates on the redacted copy.
   const safe = redactSpans(spans)
-  const kinds = opts.kinds && opts.kinds.length ? opts.kinds : supportedKinds(safe)
+  const requested = opts.kinds && opts.kinds.length ? opts.kinds : supportedKinds(safe)
+  // An ingested recording becomes the screen capsule → drop the screenshot replay.
+  const kinds = resolveKinds(requested, Boolean(opts.video))
   // Default run id is a deterministic content hash, so re-running the same trace
   // re-uses the same dir (no clock dependence).
   const runId = opts.runId ?? `run-${createHash('sha1').update(JSON.stringify(safe)).digest('hex').slice(0, 12)}`
@@ -206,6 +255,15 @@ export async function runToVideo(
   fs.mkdirSync(runDir, { recursive: true })
 
   const results: CapsuleResult[] = []
+  // Ingest the driver's real recording (cursor overlay baked in) as the screen
+  // capsule, when given. Failure here must not lose the trace-rendered capsules.
+  if (opts.video) {
+    try {
+      results.push(await ingestVideoCapsule(opts.video, runDir, title, safe, opts))
+    } catch (err) {
+      results.push({ kind: 'screen', error: err instanceof Error ? err.message : String(err) })
+    }
+  }
   for (const kind of kinds) {
     const htmlPath = path.join(runDir, `${kind}.html`)
     // One capsule failing (a flaky upload, a recorder hiccup) must not lose the
