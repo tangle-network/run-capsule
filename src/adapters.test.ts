@@ -25,6 +25,27 @@ describe('per-surface adapters', () => {
     expect(screen).toHaveLength(2)
     expect(screen[0]?.image).toMatch(/^data:image\/jpeg;base64,/)
     expect(screen[0]?.url).toBe('https://app')
+    expect(screen[0]?.reasoning).toBe('open the app')
+  })
+
+  it('playwright TestSuiteResult (report.json) → unwraps results[0].agentResult', () => {
+    const spans = spansFromPlaywrightResult({
+      schemaVersion: '1',
+      results: [
+        {
+          agentResult: {
+            turns: [
+              { action: { action: 'navigate', url: 'https://app' }, state: { url: 'https://app', screenshot: 'QkFTRTY0' }, reasoning: 'open' },
+              { action: { action: 'click', selector: '.go' }, state: { url: 'https://app/x', screenshot: 'QkFTRTY0Mg==' } },
+            ],
+          },
+        },
+      ],
+    } as unknown as Parameters<typeof spansFromPlaywrightResult>[0])
+    expect(spans).toHaveLength(2)
+    const screen = screenStepsFromSpans(spans)
+    expect(screen[0]?.image).toMatch(/^data:image\/jpeg;base64,/)
+    expect(screen[0]?.url).toBe('https://app')
   })
 
   it('computer-use steps → computer spans for the screen capsule', () => {

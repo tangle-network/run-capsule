@@ -32,9 +32,20 @@ interface PwTurn {
   verified?: boolean
   error?: string
 }
-/** Accepts the full TestResult, its `agentResult`, or a bare `{ turns }`. */
+interface PwSingleResult {
+  agentResult?: { turns?: PwTurn[]; result?: string }
+  turns?: PwTurn[]
+}
+/**
+ * Accepts every shape the driver writes:
+ * - a bare `Turn[]`,
+ * - a single `TestResult` (`{ agentResult }`) or its `agentResult` (`{ turns }`),
+ * - the canonical on-disk `report.json`, which is a `TestSuiteResult`
+ *   (`{ results: TestResult[] }`). For a suite we map the first case by default;
+ *   selecting among multiple cases is a caller/CLI concern, not the adapter's.
+ */
 type PlaywrightResultLike =
-  | { agentResult?: { turns?: PwTurn[]; result?: string }; turns?: PwTurn[] }
+  | (PwSingleResult & { results?: PwSingleResult[] })
   | PwTurn[]
 
 function asDataUri(b64OrUrl: string | undefined, mime: string): string | undefined {
@@ -44,9 +55,12 @@ function asDataUri(b64OrUrl: string | undefined, mime: string): string | undefin
 }
 
 export function spansFromPlaywrightResult(result: PlaywrightResultLike, runId = 'playwright'): Span[] {
+  const single: PwSingleResult = Array.isArray(result)
+    ? {}
+    : (result.results?.[0] ?? result)
   const turns: PwTurn[] = Array.isArray(result)
     ? result
-    : (result.agentResult?.turns ?? result.turns ?? [])
+    : (single.agentResult?.turns ?? single.turns ?? [])
 
   const spans: Span[] = []
   let t = 1000
