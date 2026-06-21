@@ -14,6 +14,9 @@ export interface ScreenStep {
   url?: string
   /** data: URI or http(s) URL of the frame, if captured. */
   image?: string
+  /** The agent's reasoning for this step, if the trace carried one
+   *  (`attributes.reasoning`). Surfaced as the caption's "thinking" line. */
+  reasoning?: string
 }
 
 function str(v: unknown): string | undefined {
@@ -41,10 +44,12 @@ export function screenStepsFromSpans(spans: readonly Span[]): ScreenStep[] {
     const image =
       str(attrs?.screenshot) ?? str(attrs?.screenshotUrl) ?? str(attrs?.image) ?? str(attrs?.frame) ??
       str(result?.screenshot) ?? str(result?.image)
+    const reasoning = str(attrs?.reasoning) ?? str(attrs?.thought) ?? str(result?.reasoning)
     out.push({
       label: str(a?.action) ?? str(a?.selector) ?? tool.toolName,
       url: str(a?.url) ?? str(attrs?.url),
       image: isImg(image) ? image : undefined,
+      reasoning: reasoning ? reasoning.replace(/\s+/g, ' ').trim().slice(0, 280) : undefined,
     })
   }
   return out
@@ -88,6 +93,8 @@ export function renderScreenCapsuleHtml(
   .placeholder{display:flex;flex-direction:column;align-items:center;gap:14px;color:#5b6b7d}
   .placeholder .big{font-size:2.4rem}
   .caption{position:absolute;left:0;right:0;bottom:0;padding:14px 22px;background:linear-gradient(transparent,rgba(5,8,13,.92));font-family:ui-sans-serif,system-ui,sans-serif}
+  .caption .think{color:#cbd6e2;font-size:.95rem;font-style:italic;margin-bottom:7px;max-width:80%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .caption .think::before{content:"💭 ";font-style:normal}
   .caption .act{font-size:1.05rem;font-weight:600}
   .caption .url{color:#58a6ff;font-size:.85rem;word-break:break-all}
   footer{display:flex;align-items:center;gap:14px;padding:9px 16px;background:#111a29;border-top:1px solid #1e2a3a;font-size:.82rem;color:#9aa7b5}
@@ -110,7 +117,7 @@ export function renderScreenCapsuleHtml(
     STEPS.forEach(function(s,k){
       var f=document.createElement('div'); f.className='frame'; f.dataset.k=k;
       var inner = s.image ? '<img src="'+s.image+'" alt="">' : '<div class="placeholder"><div class="big">🖥️</div><div>'+esc(s.label)+'</div></div>';
-      f.innerHTML=inner+'<div class="caption"><div class="act">'+esc(s.label)+'</div>'+(s.url?'<div class="url">'+esc(s.url)+'</div>':'')+'</div>';
+      f.innerHTML=inner+'<div class="caption">'+(s.reasoning?'<div class="think">'+esc(s.reasoning)+'</div>':'')+'<div class="act">'+esc(s.label)+'</div>'+(s.url?'<div class="url">'+esc(s.url)+'</div>':'')+'</div>';
       stage.appendChild(f);
     });
   }
