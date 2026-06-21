@@ -31,6 +31,25 @@ function animationDonePredicate(): boolean {
   return Array.from(document.querySelectorAll('button')).some((b) => /Play/.test(b.textContent || ''))
 }
 
+/**
+ * Transcode any input video to a web-friendly H.264 MP4 (`+faststart` so it
+ * streams without a full download). Returns the output path, or `undefined` if
+ * ffmpeg is unavailable or fails — callers fall back to the source file.
+ * Shared by the recorder and the external-video ingest path.
+ */
+export function transcodeToMp4(src: string, outMp4: string): string | undefined {
+  try {
+    execFileSync(
+      'ffmpeg',
+      ['-y', '-i', src, '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', outMp4],
+      { stdio: 'ignore' },
+    )
+    return outMp4
+  } catch {
+    return undefined
+  }
+}
+
 export async function recordHtmlToVideo(
   htmlPath: string,
   outDir: string,
@@ -71,16 +90,7 @@ export async function recordHtmlToVideo(
 
   let mp4: string | undefined
   if (opts.toMp4 ?? true) {
-    mp4 = path.join(outDir, `${base}.mp4`)
-    try {
-      execFileSync(
-        'ffmpeg',
-        ['-y', '-i', webm, '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4],
-        { stdio: 'ignore' },
-      )
-    } catch {
-      mp4 = undefined
-    }
+    mp4 = transcodeToMp4(webm, path.join(outDir, `${base}.mp4`))
   }
   return { webm, mp4, durationMs: Date.now() - startedAt }
 }

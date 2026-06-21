@@ -27,6 +27,7 @@ interface Args {
   playwright?: string
   claude?: string
   events?: string
+  video?: string
   kinds?: CapsuleKind[]
   host: ShareHost
   expiry: LitterboxExpiry
@@ -56,6 +57,7 @@ function parse(argv: string[]): Args {
       case '--playwright': a.playwright = argv[++i]; break
       case '--claude': a.claude = argv[++i]; break
       case '--events': a.events = argv[++i]; break
+      case '--video': a.video = argv[++i]; break
       case '--kinds': a.kinds = (argv[++i] ?? '').split(',').map((s) => s.trim()).filter(Boolean) as CapsuleKind[]; break
       case '--host': a.host = (argv[++i] as ShareHost) ?? 'litterbox'; break
       case '--expiry': a.expiry = (argv[++i] as LitterboxExpiry) ?? '72h'; break
@@ -72,7 +74,7 @@ function parse(argv: string[]): Args {
       default: if (arg.startsWith('--')) { console.error(`Unknown flag: ${arg}`); process.exit(1) }
     }
   }
-  if (!a.demo && !a.trace && !a.workdir && !a.playwright && !a.claude && !a.events) { help(); process.exit(1) }
+  if (!a.demo && !a.trace && !a.workdir && !a.playwright && !a.claude && !a.events && !a.video) { help(); process.exit(1) }
   return a
 }
 
@@ -85,6 +87,10 @@ function help(): void {
   --playwright <f>     agent-browser-driver TestResult JSON (browser/screen)
   --claude <f.jsonl>   Anthropic Messages stream (sandbox-driver stream-shot)
   --events <f.json>    agent-eval RuntimeEventLike[] JSON
+  --video <f>          Ingest an already-rendered run video (e.g. the browser
+                       driver's recording.webm, cursor overlay baked in) as the
+                       screen capsule, instead of rebuilding a screenshot replay.
+                       Pair with --playwright for the reasoning storyboard.
   --kinds <list>       code,terminal,screen,conversation,replay (auto-detect)
                        + opt-in: studio (1:1 sandbox-ui run view),
                          orbit (rendered-model spin), composed (sequenced film)
@@ -132,7 +138,9 @@ async function main() {
           ? spansFromClaudeMessages(readJsonl(a.claude))
           : a.events
             ? spansFromRuntimeEvents(readJson(a.events))
-            : (readJson(a.trace as string) as Span[])
+            : a.trace
+              ? (readJson(a.trace) as Span[])
+              : [] // --video alone: no trace, just ingest the recording
 
   // Rendered-model frames (for orbit/composed) loaded as data URIs from a dir.
   const orbitFrames = a.orbitDir
@@ -150,7 +158,7 @@ async function main() {
 
   console.log(`\nrun-capsule  (${spans.length} spans) → ${a.host}${a.host === 'litterbox' ? ` (${a.expiry})` : ''}`)
   const { runDir, results } = await runToVideo(spans, {
-    title: a.title, kinds: a.kinds, outDir: a.outDir,
+    title: a.title, kinds: a.kinds, outDir: a.outDir, video: a.video,
     upload: a.upload, host: a.host, expiry: a.expiry, toMp4: a.mp4,
     orbitFrames, result,
     narrate: a.narrate, music: a.music, voice: a.voice,

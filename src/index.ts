@@ -15,10 +15,10 @@
  * adapters/), then everything downstream is uniform + free.
  */
 
-export { runToVideo, supportedKinds } from './run-to-video.js'
+export { runToVideo, supportedKinds, resolveKinds } from './run-to-video.js'
 export type { CapsuleKind, CapsuleResult, RunToVideoOptions } from './run-to-video.js'
 
-export { recordHtmlToVideo } from './record.js'
+export { recordHtmlToVideo, transcodeToMp4 } from './record.js'
 export type { RecordVideoOptions } from './record.js'
 export { uploadToShareHost } from './upload.js'
 export type { ShareHost, LitterboxExpiry, UploadOptions } from './upload.js'

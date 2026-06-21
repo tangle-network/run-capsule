@@ -18,6 +18,10 @@ npx run-capsule --workdir ./generated-project      # code capsule from real file
 npx run-capsule --playwright agent-result.json     # browser/screen from a Playwright run
 npx run-capsule --claude stream.jsonl              # any Claude Messages stream
 npx run-capsule --demo                             # built-in sample
+
+# Reuse a driver's already-rendered run video (cursor overlay baked in) as the
+# screen capsule, with the reasoning storyboard from the trace alongside:
+npx run-capsule --playwright report.json --video recording.webm
 ```
 
 ## What it renders
@@ -28,9 +32,11 @@ npx run-capsule --demo                             # built-in sample
 |---|---|---|
 | `code` | edit/write tool spans | the agent typing each file (themed, file tabs + explorer) |
 | `terminal` | shell/sandbox spans | commands typing out with their output |
-| `screen` | browser/computer-use spans | real screenshots replayed with action captions |
+| `screen` | browser/computer-use spans, or an ingested `--video` | real screenshots replayed with action + 💭 reasoning captions — or, with `--video`, the driver's own recording (cursor overlay baked in) passed through |
 | `conversation` | llm messages | the back-and-forth reasoning |
 | `replay` | the whole trace | the unified storyboard (title → moments → summary) |
+
+With `--video <file>` the `screen` capsule is the supplied recording itself (transcoded + uploaded), and the screenshot replay is suppressed — so a [`@tangle-network/browser-agent-driver`](https://github.com/tangle-network/browser-agent-driver) run rendered with `--show-cursor` keeps its real animated cursor, while the trace still drives the storyboard. The overlay is rendered once, in the driver; run-capsule reuses it.
 
 ## Adapters — one per surface
 
@@ -74,10 +80,11 @@ nix develop          # devShell with node, pnpm, ffmpeg, and Chromium wired for 
 
 ## API
 
-- `runToVideo(spans, { title, kinds?, outDir, upload?, host?, expiry?, toMp4? })` → `{ runDir, results }`
+- `runToVideo(spans, { title, kinds?, outDir, upload?, host?, expiry?, toMp4?, video? })` → `{ runDir, results }` — pass `video` to ingest an already-rendered recording as the screen capsule
 - `supportedKinds(spans)` → which capsules the trace supports
+- `resolveKinds(kinds, hasVideo)` → kinds to render, dropping `screen` when a video is ingested
 - `renderCodeCapsuleHtml` / `renderTerminalCapsuleHtml` / `renderScreenCapsuleHtml` / `renderConversationCapsuleHtml`
-- `recordHtmlToVideo(htmlPath, outDir, opts)` → `{ webm, mp4? }`
+- `recordHtmlToVideo(htmlPath, outDir, opts)` → `{ webm, mp4? }`; `transcodeToMp4(src, outMp4)` → H.264 mp4 path
 - `uploadToShareHost(file, { host, expiry })` → URL
 - the adapters above, and `redactSpans`
 
