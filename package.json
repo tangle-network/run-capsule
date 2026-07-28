@@ -44,7 +44,7 @@
     "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@tangle-network/agent-eval": "0.134.1",
+    "@tangle-network/agent-eval": "0.135.1",
     "playwright": "^1.57.0"
   },
   "devDependencies": {
