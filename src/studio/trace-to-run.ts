@@ -4,8 +4,8 @@
  * real `RunGroup` / `InlineToolItem` / `InlineThinkingItem` components, 1:1 with
  * the product, instead of a bespoke approximation.
  *
- * Shapes mirror @tangle-network/sandbox-ui/types (kept as local structural types
- * so this module stays usable from plain TS without pulling React):
+ * Shapes are checked against @tangle-network/sandbox-ui/types through type-only
+ * imports, so this runtime module does not pull React:
  *   SessionPart = TextPart | ToolPart | ReasoningPart
  *   ToolPart.state = { status, input?, output?, error?, time? }
  *   Run = { id, messages, isComplete, isStreaming, stats, summaryText, finalTextPart }
@@ -16,13 +16,25 @@
  */
 
 import type { Span } from '@tangle-network/agent-eval'
+import type {
+  Run,
+  RunStats,
+  SessionPart,
+  ToolCategory,
+  ToolPart,
+  ToolStatus,
+} from '@tangle-network/sandbox-ui/types'
 
-export interface RunBundle {
-  run: unknown // sandbox-ui Run (structural; the React side imports the real type)
-  partMap: Record<string, unknown[]> // Record<string, SessionPart[]>
+type SerializedRun = Omit<Run, 'stats'> & {
+  stats: Omit<RunStats, 'toolCategories'> & {
+    toolCategories: ToolCategory[]
+  }
 }
 
-type ToolStatus = 'pending' | 'running' | 'completed' | 'error'
+export interface RunBundle {
+  run: SerializedRun
+  partMap: Record<string, SessionPart[]>
+}
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined
@@ -31,36 +43,50 @@ function obj(v: unknown): Record<string, unknown> | undefined {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined
 }
 
-/** Map a tool span's name to sandbox-ui's tool vocabulary so it gets the right
- *  icon + specialized preview. */
-function normalizeTool(span: Extract<Span, { kind: 'tool' }>): { tool: string; input: unknown } {
+interface NormalizedTool {
+  tool: string
+  category: ToolCategory
+  input: unknown
+}
+
+/** Map a tool span to sandbox-ui's display name and summary category. */
+function normalizeTool(span: Extract<Span, { kind: 'tool' }>): NormalizedTool {
   const tn = span.toolName.toLowerCase()
   const a = obj(span.args)
   if (/edit|patch|apply|str_replace|diff/.test(tn)) {
-    return { tool: 'edit', input: { filePath: str(a?.path) ?? str(a?.file), diff: str(a?.diff) ?? str(a?.patch) } }
+    return {
+      tool: 'edit',
+      category: 'edit',
+      input: { filePath: str(a?.path) ?? str(a?.file), diff: str(a?.diff) ?? str(a?.patch) },
+    }
   }
   if (/write|create.*file|save/.test(tn)) {
-    return { tool: 'write', input: { filePath: str(a?.path) ?? str(a?.file), content: str(a?.content) } }
+    return {
+      tool: 'write',
+      category: 'write',
+      input: { filePath: str(a?.path) ?? str(a?.file), content: str(a?.content) },
+    }
   }
   if (/read|cat|open|view|get.*file/.test(tn)) {
-    return { tool: 'read', input: { filePath: str(a?.path) ?? str(a?.file) } }
+    return { tool: 'read', category: 'read', input: { filePath: str(a?.path) ?? str(a?.file) } }
   }
-  if (/grep|search/.test(tn)) return { tool: 'grep', input: a ?? span.args }
-  if (/glob|find|list/.test(tn)) return { tool: 'glob', input: a ?? span.args }
+  if (/grep|search/.test(tn)) return { tool: 'grep', category: 'search', input: a ?? span.args }
+  if (/glob|find|list/.test(tn)) return { tool: 'glob', category: 'search', input: a ?? span.args }
   if (/browser|playwright|navigate|goto|page|web|http|fetch/.test(tn)) {
-    // 'fetch' is the real sandbox-ui tool vocab key; 'web' is not and would hit
-    // the unknown-tool fallback (which dumps raw args/output).
-    return { tool: 'fetch', input: a ?? span.args }
+    return { tool: 'fetch', category: 'web', input: a ?? span.args }
   }
   if (/shell|bash|exec|run|terminal|command|sandbox|process|openscad|npm|pnpm|git/.test(tn)) {
     const command = typeof span.args === 'string' ? span.args : str(a?.command) ?? str(a?.cmd) ?? span.toolName
-    return { tool: 'bash', input: { command } }
+    return { tool: 'bash', category: 'command', input: { command } }
   }
-  return { tool: span.toolName, input: span.args }
+  return { tool: span.toolName, category: 'other', input: span.args }
 }
 
-function toolPart(span: Extract<Span, { kind: 'tool' }>): unknown {
-  const { tool, input } = normalizeTool(span)
+function toolPart(span: Extract<Span, { kind: 'tool' }>): {
+  part: ToolPart
+  category: ToolCategory
+} {
+  const { tool, category, input } = normalizeTool(span)
   const status: ToolStatus = span.status === 'error' || span.error ? 'error' : 'completed'
   const output =
     typeof span.result === 'string'
@@ -69,16 +95,19 @@ function toolPart(span: Extract<Span, { kind: 'tool' }>): unknown {
         ? span.result
         : str((obj(span.attributes) ?? {}).output)
   return {
-    type: 'tool',
-    id: span.spanId,
-    tool,
-    callID: span.spanId,
-    state: {
-      status,
-      input,
-      output,
-      error: span.error,
-      time: { start: span.startedAt, end: span.endedAt ?? span.startedAt },
+    category,
+    part: {
+      type: 'tool',
+      id: span.spanId,
+      tool,
+      callID: span.spanId,
+      state: {
+        status,
+        input,
+        output,
+        error: span.error,
+        time: { start: span.startedAt, end: span.endedAt ?? span.startedAt },
+      },
     },
   }
 }
@@ -92,31 +121,41 @@ function toolPart(span: Extract<Span, { kind: 'tool' }>): unknown {
  */
 export function traceToRunBundle(spans: readonly Span[]): RunBundle {
   const ordered = [...spans].sort((a, b) => a.startedAt - b.startedAt)
+  const finalAssistantIndex = ordered.findLastIndex(
+    (span) => span.kind === 'llm' && Boolean(str(span.output)),
+  )
   const userMsgId = 'u1'
   const asstMsgId = 'a1'
-  const userParts: unknown[] = []
-  const asstParts: unknown[] = []
+  const userParts: SessionPart[] = []
+  const asstParts: SessionPart[] = []
 
   let firstUserCaptured = false
   let toolCount = 0
   let thinkingMs = 0
-  const categories = new Set<string>()
+  const categories = new Set<ToolCategory>()
   const assistantTexts: string[] = []
 
-  for (const s of ordered) {
+  for (const [spanIndex, s] of ordered.entries()) {
     if (s.kind === 'llm') {
       const msgs = s.messages ?? []
       const userTurn = msgs.find((m) => m.role === 'user')
-      if (!firstUserCaptured && userTurn && str(userTurn.content)) {
-        userParts.push({ type: 'text', text: str(userTurn.content) })
+      const userText = str(userTurn?.content)
+      if (!firstUserCaptured && userText) {
+        userParts.push({ type: 'text', text: userText })
         firstUserCaptured = true
       }
       const out = str(s.output)
       if (out) {
-        // Assistant prose → a reasoning block (shows the thinking UI), and track
-        // it as the running narrative; the final one also becomes the answer.
-        asstParts.push({ type: 'reasoning', text: out, time: { start: s.startedAt, end: s.endedAt ?? s.startedAt } })
-        thinkingMs += Math.max(0, (s.endedAt ?? s.startedAt) - s.startedAt)
+        if (spanIndex === finalAssistantIndex) {
+          asstParts.push({ type: 'text', text: out })
+        } else {
+          asstParts.push({
+            type: 'reasoning',
+            text: out,
+            time: { start: s.startedAt, end: s.endedAt ?? s.startedAt },
+          })
+          thinkingMs += Math.max(0, (s.endedAt ?? s.startedAt) - s.startedAt)
+        }
         assistantTexts.push(out)
       }
     } else if (s.kind === 'tool' || s.kind === 'sandbox') {
@@ -130,15 +169,22 @@ export function traceToRunBundle(spans: readonly Span[]): RunBundle {
         s.kind === 'sandbox'
           ? ({ ...s, kind: 'tool', toolName: 'bash', args: { command: (s as { command?: string }).command ?? s.name } } as Extract<Span, { kind: 'tool' }>)
           : (s as Extract<Span, { kind: 'tool' }>)
-      asstParts.push(toolPart(tspan))
+      const normalized = toolPart(tspan)
+      asstParts.push(normalized.part)
       toolCount++
-      categories.add(normalizeTool(tspan).tool)
+      categories.add(normalized.category)
     }
   }
 
   const finalText = assistantTexts[assistantTexts.length - 1] ?? null
-  const partMap: Record<string, unknown[]> = { [userMsgId]: userParts, [asstMsgId]: asstParts }
-  const run = {
+  const finalTextPartIndex = asstParts.findLastIndex(
+    (part) => part.type === 'text' && !part.synthetic && part.text.trim().length > 0,
+  )
+  const partMap: Record<string, SessionPart[]> = {
+    [userMsgId]: userParts,
+    [asstMsgId]: asstParts,
+  }
+  const run: SerializedRun = {
     id: 'run-1',
     messages: [
       { id: userMsgId, role: 'user', _insertionIndex: 0 },
@@ -150,11 +196,14 @@ export function traceToRunBundle(spans: readonly Span[]): RunBundle {
       toolCount,
       messageCount: 1,
       thinkingDurationMs: thinkingMs,
-      textPartCount: assistantTexts.length,
+      textPartCount: asstParts.filter((part) => part.type === 'text' && !part.synthetic).length,
       toolCategories: Array.from(categories), // serialized as array; the player rebuilds a Set
     },
     summaryText: finalText ? finalText.slice(0, 140) : null,
-    finalTextPart: finalText ? { type: 'text', text: finalText } : null,
+    finalTextPart:
+      finalText && finalTextPartIndex >= 0
+        ? { messageId: asstMsgId, partIndex: finalTextPartIndex, text: finalText }
+        : null,
   }
   return { run, partMap }
 }
