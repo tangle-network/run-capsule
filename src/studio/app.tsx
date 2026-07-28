@@ -14,10 +14,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RunGroup } from '@tangle-network/sandbox-ui/run'
+import type { Run, SessionPart } from '@tangle-network/sandbox-ui/types'
+import type { RunBundle } from './trace-to-run.js'
 
-interface Bundle {
-  run: any
-  partMap: Record<string, any[]>
+interface Bundle extends RunBundle {
   title?: string
   /** ms between revealing each assistant part. */
   stepMs?: number
@@ -33,20 +33,22 @@ function App({ bundle }: { bundle: Bundle }) {
   const { run, partMap } = bundle
   const stepMs = bundle.stepMs ?? 1100
 
-  const userMsg = run.messages.find((m: any) => m.role === 'user')
-  const asstMsg = run.messages.find((m: any) => m.role === 'assistant')
+  const userMsg = run.messages.find((m) => m.role === 'user')
+  const asstMsg = run.messages.find((m) => m.role === 'assistant')
   const userText: string = userMsg
-    ? (partMap[userMsg.id] ?? []).map((p: any) => p.text).filter(Boolean).join('\n')
+    ? (partMap[userMsg.id] ?? [])
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n')
     : ''
-  const asstParts: any[] = asstMsg ? partMap[asstMsg.id] ?? [] : []
+  const asstParts = asstMsg ? partMap[asstMsg.id] ?? [] : []
 
   // Rebuild the toolCategories Set (serialized as an array across the wire).
-  const runForGroup = useMemo(() => {
-    const cats = Array.isArray(run.stats?.toolCategories) ? run.stats.toolCategories : []
+  const runForGroup = useMemo<Run>(() => {
     return {
       ...run,
       messages: asstMsg ? [asstMsg] : [],
-      stats: { ...run.stats, toolCategories: new Set(cats) },
+      stats: { ...run.stats, toolCategories: new Set(run.stats.toolCategories) },
     }
   }, [run, asstMsg])
 
@@ -61,7 +63,7 @@ function App({ bundle }: { bundle: Bundle }) {
     return () => clearTimeout(t)
   }, [revealed, asstParts.length, stepMs])
 
-  const livePartMap = useMemo(
+  const livePartMap = useMemo<Record<string, SessionPart[]>>(
     () => (asstMsg ? { [asstMsg.id]: asstParts.slice(0, revealed) } : {}),
     [asstMsg, asstParts, revealed],
   )

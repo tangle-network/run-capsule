@@ -4,8 +4,8 @@
  * marketing money-shot for chat-shaped agents (legal/gtm/tax) the way the code
  * capsule is for coding agents.
  *
- * Reuses the substrate's conversation extraction (agent-eval 0.76+
- * `reduceToSemanticEvents` emits understood_task / user_message / agent_reply
+ * Reuses agent-eval's conversation extraction
+ * (`reduceToSemanticEvents` emits understood_task / user_message / agent_reply
  * with prose visuals, deduped across the repeated message history) rather than
  * re-deriving it here — the consumer adds only the chat presentation. Self-
  * contained (zero-dep); on completion it flips the play button to "▶ Play" AND
