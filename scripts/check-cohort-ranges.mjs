@@ -20,7 +20,15 @@ const manifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')
 const exactVersion = /^\d+\.\d+\.\d+(?:[-+].*)?$/
 const offenders = []
 
-for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+// devDependencies are checked too: the studio bundle compiles `@tangle-network/*`
+// build-time packages into the published artifact, so an exact pin there freezes
+// the peer set the bundle is built against.
+for (const section of [
+  'dependencies',
+  'optionalDependencies',
+  'peerDependencies',
+  'devDependencies',
+]) {
   for (const [name, spec] of Object.entries(manifest[section] ?? {})) {
     if (!name.startsWith('@tangle-network/')) continue
     if (typeof spec === 'string' && exactVersion.test(spec)) {
