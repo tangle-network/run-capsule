@@ -2,7 +2,7 @@
 
 Turn any agent run's **trace** into a **shareable video**.
 
-`run-capsule` consumes a run's `Span[]` trace (the [`@tangle-network/agent-eval`](https://www.npmjs.com/package/@tangle-network/agent-eval) `storyboard` IR), renders modality-typed **capsule** animations — code, terminal, screen, conversation, and a unified replay — records each headless to MP4, and uploads to a temporary public link. Secrets are **redacted before anything is rendered or uploaded**.
+`run-capsule` consumes a run's `Span[]` trace (the [`@tangle-network/agent-eval`](https://www.npmjs.com/package/@tangle-network/agent-eval) `storyboard` IR), renders modality-typed **capsule** animations — code, terminal, screen, conversation, and a unified replay — and records each headless to MP4 on local disk. Publishing to a public link is opt-in (`upload: true` or `--upload`). Secrets are **redacted before anything is rendered**.
 
 > The trace is the source of truth; the storyboard is the IR; the video is just one compiled target. Capture once, render many views.
 
@@ -10,7 +10,11 @@ Turn any agent run's **trace** into a **shareable video**.
 import { runToVideo } from '@tangle-network/run-capsule'
 
 const { results } = await runToVideo(spans, { title: 'Agent builds a DEX', outDir: 'out' })
-for (const r of results) console.log(r.kind, r.url) // → shareable links
+for (const r of results) console.log(r.kind, r.videoPath) // local clips
+
+// Opt in to publishing: each result also gets a public share link.
+const shared = await runToVideo(spans, { title: 'Agent builds a DEX', outDir: 'out', upload: true })
+for (const r of shared.results) console.log(r.kind, r.url)
 ```
 
 ```
@@ -18,6 +22,7 @@ npx run-capsule --workdir ./generated-project      # code capsule from real file
 npx run-capsule --playwright agent-result.json     # browser/screen from a Playwright run
 npx run-capsule --claude stream.jsonl              # any Claude Messages stream
 npx run-capsule --demo                             # built-in sample
+npx run-capsule --demo --upload                    # also publish each clip (temporary link)
 
 # Reuse a driver's already-rendered run video (cursor overlay baked in) as the
 # screen capsule, with the reasoning storyboard from the trace alongside:
@@ -36,7 +41,7 @@ npx run-capsule --playwright report.json --video recording.webm
 | `conversation` | llm messages | the back-and-forth reasoning |
 | `replay` | the whole trace | the unified storyboard (title → moments → summary) |
 
-With `--video <file>` the `screen` capsule is the supplied recording itself (transcoded + uploaded), and the screenshot replay is suppressed — so a [`@tangle-network/browser-agent-driver`](https://github.com/tangle-network/browser-agent-driver) run rendered with `--show-cursor` keeps its real animated cursor, while the trace still drives the storyboard. The overlay is rendered once, in the driver; run-capsule reuses it.
+With `--video <file>` the `screen` capsule is the supplied recording itself (transcoded, and uploaded only with `--upload`), and the screenshot replay is suppressed — so a [`@tangle-network/browser-agent-driver`](https://github.com/tangle-network/browser-agent-driver) run rendered with `--show-cursor` keeps its real animated cursor, while the trace still drives the storyboard. The overlay is rendered once, in the driver; run-capsule reuses it.
 
 ## Adapters — one per surface
 
@@ -54,7 +59,11 @@ The output is only as rich as the trace: a `screen` capsule shows real frames wh
 
 ## Privacy
 
-The clip is **published to a public host** (litterbox by default, temporary; or catbox, permanent). `runToVideo` runs `redactSpans` first, which strips high-confidence credential shapes (provider tokens, JWTs, PEM keys, `key=value` secrets) from every string in the trace. It is fail-closed (over-redacts rather than leak), and leaves `data:` URIs (screenshots) intact. Still: only render runs you're comfortable sharing.
+Clips stay in the output directory by default.
+With `upload: true` (CLI `--upload`), each clip is **published to a public host**: litterbox by default (temporary), or catbox (permanent).
+Anyone with the link can view it, and even temporary uploads may be cached.
+
+`runToVideo` runs `redactSpans` first, which strips high-confidence credential shapes (provider tokens, JWTs, PEM keys, `key=value` secrets) from every string in the trace. It is fail-closed (over-redacts rather than leak), and leaves `data:` URIs (screenshots) intact. Still: only render runs you're comfortable sharing.
 
 ## System dependencies
 
@@ -80,12 +89,12 @@ nix develop          # devShell with node, pnpm, ffmpeg, and Chromium wired for 
 
 ## API
 
-- `runToVideo(spans, { title, kinds?, outDir, upload?, host?, expiry?, toMp4?, video? })` → `{ runDir, results }` — pass `video` to ingest an already-rendered recording as the screen capsule
+- `runToVideo(spans, { title, kinds?, outDir, upload?, host?, expiry?, toMp4?, video? })` → `{ runDir, results }`. `upload` defaults to false; set it to publish each clip and fill `results[].url`. Pass `video` to ingest an already-rendered recording as the screen capsule.
 - `supportedKinds(spans)` → which capsules the trace supports
 - `resolveKinds(kinds, hasVideo)` → kinds to render, dropping `screen` when a video is ingested
 - `renderCodeCapsuleHtml` / `renderTerminalCapsuleHtml` / `renderScreenCapsuleHtml` / `renderConversationCapsuleHtml`
 - `recordHtmlToVideo(htmlPath, outDir, opts)` → `{ webm, mp4? }`; `transcodeToMp4(src, outMp4)` → H.264 mp4 path
-- `uploadToShareHost(file, { host, expiry })` → URL
+- `uploadToShareHost(file, { host, expiry })` → public URL (publishes the file)
 - the adapters above, and `redactSpans`
 
 ## License

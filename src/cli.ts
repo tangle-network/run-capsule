@@ -4,7 +4,7 @@
  *
  *   run-capsule --demo
  *   run-capsule --workdir ./generated-project
- *   run-capsule --trace run.json --kinds code,terminal --host catbox
+ *   run-capsule --trace run.json --kinds code,terminal --upload --host catbox
  */
 
 import * as fs from 'node:fs'
@@ -44,7 +44,7 @@ interface Args {
 
 function parse(argv: string[]): Args {
   const a: Args = {
-    demo: false, host: 'litterbox', expiry: '72h', upload: true, mp4: true,
+    demo: false, host: 'litterbox', expiry: '72h', upload: false, mp4: true,
     title: 'Agent run', outDir: path.resolve('run-capsules'), narrate: false, music: false,
   }
   for (let i = 0; i < argv.length; i++) {
@@ -68,7 +68,7 @@ function parse(argv: string[]): Args {
       case '--narrate': a.narrate = true; break
       case '--music': a.music = true; break
       case '--voice': a.voice = argv[++i]; break
-      case '--no-upload': a.upload = false; break
+      case '--upload': a.upload = true; break
       case '--no-mp4': a.mp4 = false; break
       case '--help': case '-h': help(); process.exit(0)
       default: if (arg.startsWith('--')) { console.error(`Unknown flag: ${arg}`); process.exit(1) }
@@ -99,9 +99,11 @@ function help(): void {
   --narrate            Add synthesized VO narration (needs ROUTER_KEY env)
   --music              Add a subtle music bed
   --voice <v>          TTS voice (default alloy)
-  --host <h>           litterbox (temp) | catbox (permanent)
-  --expiry <e>         1h|12h|24h|72h  (litterbox)
-  --no-upload          Render + record only
+  --upload             Publish each clip to a public host and print its link.
+                       Off by default: clips stay in --out. Anyone with a link
+                       can view the clip, so upload only runs safe to share.
+  --host <h>           With --upload: litterbox (temp, default) | catbox (permanent)
+  --expiry <e>         With --upload: 1h|12h|24h|72h (litterbox, default 72h)
   --no-mp4             Keep .webm
   --title <t>          Title in the clips
   --out <dir>          Output root (default ./run-capsules)`)
@@ -156,7 +158,10 @@ async function main() {
 
   const result = a.result ? (readJson(a.result) as EvalResult) : undefined
 
-  console.log(`\nrun-capsule  (${spans.length} spans) → ${a.host}${a.host === 'litterbox' ? ` (${a.expiry})` : ''}`)
+  const destination = a.upload
+    ? `${a.host}${a.host === 'litterbox' ? ` (${a.expiry})` : ''}`
+    : `${a.outDir} (local only; pass --upload to publish)`
+  console.log(`\nrun-capsule  (${spans.length} spans) → ${destination}`)
   const { runDir, results } = await runToVideo(spans, {
     title: a.title, kinds: a.kinds, outDir: a.outDir, video: a.video,
     upload: a.upload, host: a.host, expiry: a.expiry, toMp4: a.mp4,

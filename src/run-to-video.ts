@@ -2,11 +2,11 @@
  * runToVideo — the one entrypoint. A run's trace (Span[]) in, shareable video
  * links out. Auto-selects which capsules to render based on what the trace
  * actually contains (code edits → code capsule, shell/sandbox → terminal,
- * browser/computer → screen, plus the unified storyboard replay), records each
- * headless, and uploads to a temp host.
+ * browser/computer → screen, plus the unified storyboard replay), and records each
+ * headless. Clips stay on local disk unless the caller sets `upload: true`, which
+ * publishes each one to a public share host.
  *
- * This is what every project hooks once: emit a trace, call runToVideo, post the
- * links. The quality of the output is the quality of the trace.
+ * The quality of the output is the quality of the trace.
  */
 
 import { createHash } from 'node:crypto'
@@ -58,6 +58,11 @@ export interface RunToVideoOptions {
   kinds?: CapsuleKind[]
   /** Output root. A timestamped run dir is created under it. */
   outDir: string
+  /**
+   * Publish each clip to a public share host (see `host`). Default false: clips
+   * stay in `outDir`. Anyone with a returned link can view the clip, so enable
+   * this only for runs that are safe to share.
+   */
   upload?: boolean
   host?: ShareHost
   expiry?: LitterboxExpiry
@@ -84,10 +89,10 @@ export interface RunToVideoOptions {
   /**
    * Path to an already-rendered run video (e.g. the browser driver's
    * `recording.webm` with its cursor + reasoning overlay baked in). When set,
-   * it is ingested as the `screen` capsule — transcoded to mp4 and uploaded as
-   * is — and the screenshot-replay screen capsule is suppressed (the real
-   * recording supersedes it). Reuses the driver's overlay instead of rebuilding
-   * one. The other capsules still render from the trace.
+   * it is ingested as the `screen` capsule, transcoded to mp4 and used as is,
+   * and the screenshot-replay screen capsule is suppressed (the real recording
+   * supersedes it). Reuses the driver's overlay instead of rebuilding one. The
+   * other capsules still render from the trace.
    */
   video?: string
 }
@@ -209,11 +214,17 @@ async function maybeAddAudio(
   }
 }
 
+/** Publishing is opt-in: only an explicit `upload: true` sends a clip off the machine. */
+async function maybePublish(videoPath: string, opts: RunToVideoOptions): Promise<string | undefined> {
+  if (opts.upload !== true) return undefined
+  return uploadToShareHost(videoPath, { host: opts.host, expiry: opts.expiry })
+}
+
 /**
  * Bring an already-rendered run video into the capsule set as the `screen`
  * capsule: copy it into the run dir, transcode to mp4 (reusing the recorder's
- * H.264 path), run the optional audio pass, and upload. No HTML, no re-render —
- * the driver's overlay is the source of truth, used as-is.
+ * H.264 path), run the optional audio pass, and publish it when `upload` is
+ * set. No HTML, no re-render: the driver's overlay is used as is.
  */
 async function ingestVideoCapsule(
   src: string,
@@ -230,11 +241,7 @@ async function ingestVideoCapsule(
     videoPath = transcodeToMp4(videoPath, path.join(runDir, 'screen.mp4')) ?? videoPath
   }
   videoPath = await maybeAddAudio(videoPath, 'screen', spans, title, opts)
-  let url: string | undefined
-  if (opts.upload ?? true) {
-    url = await uploadToShareHost(videoPath, { host: opts.host, expiry: opts.expiry })
-  }
-  return { kind: 'screen', videoPath, url }
+  return { kind: 'screen', videoPath, url: await maybePublish(videoPath, opts) }
 }
 
 export async function runToVideo(
@@ -242,7 +249,7 @@ export async function runToVideo(
   opts: RunToVideoOptions,
 ): Promise<{ runDir: string; results: CapsuleResult[] }> {
   const title = opts.title ?? 'Agent run'
-  // Strip secrets BEFORE anything is rendered/recorded/uploaded — the clip is
+  // Strip secrets BEFORE anything is rendered or recorded: the clip may be
   // published. Everything downstream operates on the redacted copy.
   const safe = redactSpans(spans)
   const requested = opts.kinds && opts.kinds.length ? opts.kinds : supportedKinds(safe)
@@ -275,11 +282,7 @@ export async function runToVideo(
       // Audio pass (opt-in): lay narration + music + the agent's own audio over
       // the silent recording. Fail soft — a film without sound still ships.
       videoPath = await maybeAddAudio(videoPath, kind, safe, title, opts)
-      let url: string | undefined
-      if (opts.upload ?? true) {
-        url = await uploadToShareHost(videoPath, { host: opts.host, expiry: opts.expiry })
-      }
-      results.push({ kind, htmlPath, videoPath, url })
+      results.push({ kind, htmlPath, videoPath, url: await maybePublish(videoPath, opts) })
     } catch (err) {
       results.push({ kind, htmlPath, error: err instanceof Error ? err.message : String(err) })
     }
