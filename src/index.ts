@@ -4,12 +4,12 @@
  * Turn any agent run's trace into a shareable video. Consumer of
  * @tangle-network/agent-eval/storyboard: the substrate compiles the trace into
  * the Storyboard/CodeEdit IR; this package renders rich capsule animations
- * (code / terminal / screen / unified replay), records them headless, and
- * uploads to a temp link.
+ * (code / terminal / screen / unified replay) and records them headless.
+ * Publishing to a temporary public link is opt-in.
  *
  *   import { runToVideo } from '@tangle-network/run-capsule'
  *   const { results } = await runToVideo(spans, { title, outDir: 'out' })
- *   // results[].url → shareable links
+ *   // results[].videoPath → local clips; add `upload: true` for results[].url
  *
  * Per agent surface, write one adapter that maps your run into `Span[]` (see
  * adapters/), then everything downstream is uniform + free.
