@@ -2,7 +2,7 @@
 
 Turn any agent run's **trace** into a **shareable video**.
 
-`run-capsule` consumes a run's `Span[]` trace (the [`@tangle-network/agent-eval`](https://www.npmjs.com/package/@tangle-network/agent-eval) `storyboard` IR), renders modality-typed **capsule** animations — code, terminal, screen, conversation, and a unified replay — and records each headless to MP4 on local disk. Publishing to a public link is opt-in (`upload: true` or `--upload`). Secrets are **redacted before anything is rendered**.
+`run-capsule` consumes a run's `Span[]` trace (the [`@tangle-network/agent-eval`](https://www.npmjs.com/package/@tangle-network/agent-eval) `storyboard` IR), renders modality-typed **capsule** animations — code, terminal, screen, conversation, and a unified replay — and records each headless to MP4 on local disk. Publishing to a public link is opt-in (`upload: true` or `--upload`). The trace is **redacted before anything is rendered**, and an upload is refused unless the redacted trace passes the share-safety check.
 
 > The trace is the source of truth; the storyboard is the IR; the video is just one compiled target. Capture once, render many views.
 
@@ -63,7 +63,14 @@ Clips stay in the output directory by default.
 With `upload: true` (CLI `--upload`), each clip is **published to a public host**: litterbox by default (temporary), or catbox (permanent).
 Anyone with the link can view it, and even temporary uploads may be cached.
 
-`runToVideo` runs `redactSpans` first, which strips high-confidence credential shapes (provider tokens, JWTs, PEM keys, `key=value` secrets) from every string in the trace. It is fail-closed (over-redacts rather than leak), and leaves `data:` URIs (screenshots) intact. Still: only render runs you're comfortable sharing.
+Before anything is rendered, `runToVideo` redacts the trace, title and result with agent-eval's redaction core under the `share` profile ([docs/redaction.md](https://github.com/tangle-network/agent-eval/blob/main/docs/redaction.md)).
+Credentials are replaced whole, and email, card, phone and SSN values in place.
+User, account and session ids get stable pseudonyms, and `data:` screenshots are kept.
+
+The core then checks the redacted copy again and returns a share-safety verdict.
+An upload goes ahead only when the verdict is `SAFE` or `SAFE_WITH_WARNINGS`.
+`UNSAFE` or `UNKNOWN` keeps the clip local and puts the reason in `results[].error`; the CLI exits 1.
+An ingested `video` is always `UNKNOWN`, because no text detector can read its frames, so it is never uploaded.
 
 ## System dependencies
 
@@ -95,7 +102,7 @@ nix develop          # devShell with node, pnpm, ffmpeg, and Chromium wired for 
 - `renderCodeCapsuleHtml` / `renderTerminalCapsuleHtml` / `renderScreenCapsuleHtml` / `renderConversationCapsuleHtml`
 - `recordHtmlToVideo(htmlPath, outDir, opts)` → `{ webm, mp4? }`; `transcodeToMp4(src, outMp4)` → H.264 mp4 path
 - `uploadToShareHost(file, { host, expiry })` → public URL (publishes the file)
-- the adapters above, and `redactSpans`
+- the adapters above
 
 ## License
 

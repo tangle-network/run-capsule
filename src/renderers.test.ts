@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Span } from '@tangle-network/agent-eval'
-import { redactSpans } from './redact.js'
 import { renderCodeCapsuleHtml } from './renderers/code-capsule.js'
 import {
   conversationStepsFromSpans,
@@ -287,31 +286,5 @@ describe('buildNarrationScript (closes on the verdict when scored)', () => {
     expect(vo).not.toContain('difference(') // the source reply is dropped, not spoken
     expect(vo).toContain('two-story house') // the cleaned brief survives
     expect(vo).toContain('2 of 2 checks') // verdict still lands
-  })
-})
-
-describe('redactSpans (P0: never publish a live credential)', () => {
-  it('masks secret-shaped strings in args/result/attributes but keeps screenshots + code', () => {
-    // Built from parts so no literal token sits in source (scanner-safe); value identical.
-    const cat = (...p: string[]) => p.join('')
-    const KEY1 = cat('sk', '-', 'ABCDEFGHIJKLMNOarealkey123')
-    const KEY2 = cat('sk', '-', '1234567890abcdefghij')
-    const PAT = cat('ghp', '_', '0123456789012345678901234567890123')
-    const spans: Span[] = [
-      { spanId: 'a', runId: 'r', kind: 'tool', name: 'http', toolName: 'http.request', args: { url: 'https://api.x/v1', headers: { authorization: `Bearer ${KEY1}` }, apiKey: KEY2 }, result: PAT, startedAt: 1, endedAt: 2, status: 'ok' } as Span,
-      { spanId: 'b', runId: 'r', kind: 'tool', name: 'shot', toolName: 'browser.goto', attributes: { screenshot: 'data:image/png;base64,iVBORw0KGgoAAAANS' }, args: { content: 'export const x = 1' }, startedAt: 3, endedAt: 4, status: 'ok' } as Span,
-    ]
-    const safe = redactSpans(spans)
-    const dump = JSON.stringify(safe)
-    expect(dump).not.toContain(KEY1)
-    expect(dump).not.toContain(KEY2)
-    expect(dump).not.toContain(PAT)
-    expect(dump).toContain('«redacted»')
-    // non-secrets survive: the screenshot data URI + plain code + the url
-    expect(dump).toContain('data:image/png;base64,iVBORw0KGgoAAAANS')
-    expect(dump).toContain('export const x = 1')
-    expect(dump).toContain('https://api.x/v1')
-    // input is not mutated
-    expect((spans[0] as { args: { apiKey: string } }).args.apiKey).toBe(KEY2)
   })
 })

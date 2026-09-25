@@ -15,6 +15,12 @@ import * as path from 'node:path'
 
 import type { Span } from '@tangle-network/agent-eval'
 import {
+  combineVerdicts,
+  redactForShare,
+  shareAllowed,
+  type ShareSafetyVerdict,
+} from '@tangle-network/agent-eval/traces'
+import {
   compileStoryboard,
   extractCodeEdits,
   reduceToSemanticEvents,
@@ -25,7 +31,6 @@ import { audioTmpDir, muxAudioOntoVideo, musicBed, synthesizeNarration, type Aud
 import { buildNarrationScript, extractArtifacts } from './artifacts.js'
 import { autoCompose, renderCompositionHtml } from './composition.js'
 import { directStoryboard } from './direct.js'
-import { redactSpans } from './redact.js'
 import { recordHtmlToVideo, transcodeToMp4 } from './record.js'
 import { renderCodeCapsuleHtml } from './renderers/code-capsule.js'
 import {
@@ -214,9 +219,27 @@ async function maybeAddAudio(
   }
 }
 
-/** Publishing is opt-in: only an explicit `upload: true` sends a clip off the machine. */
-async function maybePublish(videoPath: string, opts: RunToVideoOptions): Promise<string | undefined> {
+/**
+ * Publishing is opt-in: only an explicit `upload: true` sends a clip off the
+ * machine, and only when the share-safety verdict for what the clip shows is
+ * SAFE or SAFE_WITH_WARNINGS. UNSAFE or UNKNOWN keeps the clip local and
+ * records why on the capsule.
+ */
+async function maybePublish(
+  videoPath: string,
+  opts: RunToVideoOptions,
+  verdict: ShareSafetyVerdict,
+): Promise<string | undefined> {
   if (opts.upload !== true) return undefined
+  if (!shareAllowed(verdict)) {
+    const reasons = [
+      ...verdict.findings
+        .filter((finding) => finding.severity === 'error')
+        .map((finding) => `${finding.detector} at ${finding.paths.join(', ')}`),
+      ...verdict.unreadable,
+    ]
+    throw new Error(`upload refused: share-safety verdict ${verdict.status} (${reasons.join('; ')}); the clip stays at ${videoPath}`)
+  }
   return uploadToShareHost(videoPath, { host: opts.host, expiry: opts.expiry })
 }
 
@@ -232,6 +255,7 @@ async function ingestVideoCapsule(
   title: string,
   spans: readonly Span[],
   opts: RunToVideoOptions,
+  verdict: ShareSafetyVerdict,
 ): Promise<CapsuleResult> {
   if (!fs.existsSync(src)) throw new Error(`--video not found: ${src}`)
   const ext = (path.extname(src) || '.webm').toLowerCase()
@@ -241,23 +265,39 @@ async function ingestVideoCapsule(
     videoPath = transcodeToMp4(videoPath, path.join(runDir, 'screen.mp4')) ?? videoPath
   }
   videoPath = await maybeAddAudio(videoPath, 'screen', spans, title, opts)
-  return { kind: 'screen', videoPath, url: await maybePublish(videoPath, opts) }
+  // The recording's pixels were rendered elsewhere; no text detector can read them.
+  const recording = combineVerdicts(verdict.profile, [verdict], [
+    `video: ${path.basename(src)} is a pre-rendered recording, so its frames cannot be checked`,
+  ])
+  try {
+    return { kind: 'screen', videoPath, url: await maybePublish(videoPath, opts, recording) }
+  } catch (err) {
+    return { kind: 'screen', videoPath, error: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 export async function runToVideo(
   spans: readonly Span[],
   opts: RunToVideoOptions,
 ): Promise<{ runDir: string; results: CapsuleResult[] }> {
-  const title = opts.title ?? 'Agent run'
-  // Strip secrets BEFORE anything is rendered or recorded: the clip may be
-  // published. Everything downstream operates on the redacted copy.
-  const safe = redactSpans(spans)
+  // Redact BEFORE anything is rendered or recorded, with the share profile:
+  // the clip may be published. Everything downstream operates on the redacted
+  // copy. The verdict re-scans that copy and gates every upload.
+  const shared = redactForShare(
+    { title: opts.title ?? 'Agent run', spans, result: opts.result },
+    { profile: 'share' },
+  )
+  const title = shared.value.title
+  const safe: readonly Span[] = shared.value.spans
+  const verdict = shared.verdict
+  const renderOpts: RunToVideoOptions = { ...opts, title, result: shared.value.result }
   const requested = opts.kinds && opts.kinds.length ? opts.kinds : supportedKinds(safe)
   // An ingested recording becomes the screen capsule → drop the screenshot replay.
   const kinds = resolveKinds(requested, Boolean(opts.video))
-  // Default run id is a deterministic content hash, so re-running the same trace
-  // re-uses the same dir (no clock dependence).
-  const runId = opts.runId ?? `run-${createHash('sha1').update(JSON.stringify(safe)).digest('hex').slice(0, 12)}`
+  // Default run id is a deterministic hash of the input trace, so re-running the
+  // same trace re-uses the same dir (no clock dependence). It hashes the input,
+  // not the redacted copy: share-profile pseudonyms use a fresh key per call.
+  const runId = opts.runId ?? `run-${createHash('sha1').update(JSON.stringify(spans)).digest('hex').slice(0, 12)}`
   const runDir = path.join(opts.outDir, runId)
   fs.mkdirSync(runDir, { recursive: true })
 
@@ -266,7 +306,7 @@ export async function runToVideo(
   // capsule, when given. Failure here must not lose the trace-rendered capsules.
   if (opts.video) {
     try {
-      results.push(await ingestVideoCapsule(opts.video, runDir, title, safe, opts))
+      results.push(await ingestVideoCapsule(opts.video, runDir, title, safe, renderOpts, verdict))
     } catch (err) {
       results.push({ kind: 'screen', error: err instanceof Error ? err.message : String(err) })
     }
@@ -276,13 +316,17 @@ export async function runToVideo(
     // One capsule failing (a flaky upload, a recorder hiccup) must not lose the
     // others — record the error on this capsule and keep going.
     try {
-      fs.writeFileSync(htmlPath, await renderKind(kind, safe, title, opts))
+      fs.writeFileSync(htmlPath, await renderKind(kind, safe, title, renderOpts))
       const { webm, mp4 } = await recordHtmlToVideo(htmlPath, runDir, { toMp4: opts.toMp4 ?? true })
       let videoPath = mp4 ?? webm
       // Audio pass (opt-in): lay narration + music + the agent's own audio over
       // the silent recording. Fail soft — a film without sound still ships.
-      videoPath = await maybeAddAudio(videoPath, kind, safe, title, opts)
-      results.push({ kind, htmlPath, videoPath, url: await maybePublish(videoPath, opts) })
+      videoPath = await maybeAddAudio(videoPath, kind, safe, title, renderOpts)
+      try {
+        results.push({ kind, htmlPath, videoPath, url: await maybePublish(videoPath, renderOpts, verdict) })
+      } catch (err) {
+        results.push({ kind, htmlPath, videoPath, error: err instanceof Error ? err.message : String(err) })
+      }
     } catch (err) {
       results.push({ kind, htmlPath, error: err instanceof Error ? err.message : String(err) })
     }
@@ -290,7 +334,11 @@ export async function runToVideo(
 
   fs.writeFileSync(
     path.join(runDir, 'capsule.json'),
-    JSON.stringify({ runId, title, results: results.map(({ kind, url, videoPath }) => ({ kind, url, videoPath })) }, null, 2),
+    JSON.stringify(
+      { runId, title, verdict: verdict.status, results: results.map(({ kind, url, videoPath, error }) => ({ kind, url, videoPath, error })) },
+      null,
+      2,
+    ),
   )
   return { runDir, results }
 }
