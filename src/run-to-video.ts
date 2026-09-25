@@ -166,6 +166,15 @@ async function renderKind(
 
 const FILM_KINDS: ReadonlySet<CapsuleKind> = new Set(['composed', 'studio', 'replay'])
 
+// `screen` (screenStepsFromSpans) and `replay` (the storyboard, built from the
+// same spans) render `<img>` screenshots straight from span attributes, the
+// same embedded pixels `extractArtifacts` already finds under `screenshot`/
+// `image`/`screenshotUrl` — no text detector reads them. Gating only
+// `composed`/`orbit` left these two SAFE_WITH_WARNINGS (span-text-only) while
+// their actual frames went unchecked; one rule now covers every kind that can
+// carry an embedded render.
+const MEDIA_GATED_KINDS: ReadonlySet<CapsuleKind> = new Set(['composed', 'orbit', 'screen', 'replay'])
+
 /** ffprobe a media file's duration in seconds (0 if unknown). */
 async function probeDurationSec(file: string): Promise<number> {
   try {
@@ -291,10 +300,11 @@ export async function runToVideo(
   const safe: readonly Span[] = shared.value.spans
   const verdict = shared.verdict
   const renderOpts: RunToVideoOptions = { ...opts, title, result: shared.value.result }
-  // 'composed' and 'orbit' embed pixels no text detector reads: agent
-  // screenshots/videos/docs pulled straight from the trace (extractArtifacts)
-  // and the caller's orbitFrames. The span-only verdict above says nothing
-  // about them, so treat any such clip as UNKNOWN, same as an ingested --video.
+  // MEDIA_GATED_KINDS embed pixels no text detector reads: agent
+  // screenshots/videos/docs pulled straight from the trace (extractArtifacts,
+  // which also covers the screenshots `screen`/`replay` render) and the
+  // caller's orbitFrames. The span-only verdict above says nothing about
+  // them, so treat any such clip as UNKNOWN, same as an ingested --video.
   const embeddedArtifacts = extractArtifacts(safe)
   const hasOrbit = Boolean(opts.orbitFrames && opts.orbitFrames.length > 0)
   const hasEmbeddedMedia =
@@ -345,7 +355,7 @@ export async function runToVideo(
       // Audio pass (opt-in): lay narration + music + the agent's own audio over
       // the silent recording. Fail soft — a film without sound still ships.
       videoPath = await maybeAddAudio(videoPath, kind, safe, title, renderOpts)
-      const kindVerdict = kind === 'composed' || kind === 'orbit' ? mediaKindVerdict : verdict
+      const kindVerdict = MEDIA_GATED_KINDS.has(kind) ? mediaKindVerdict : verdict
       try {
         results.push({ kind, htmlPath, videoPath, url: await maybePublish(videoPath, renderOpts, kindVerdict) })
       } catch (err) {

@@ -3,3 +3,4 @@ dist
 run-capsules
 *.log
 .DS_Store
+scratchpad/
