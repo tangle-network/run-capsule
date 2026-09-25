@@ -20,7 +20,11 @@ export type { CapsuleKind, CapsuleResult, RunToVideoOptions } from './run-to-vid
 
 export { recordHtmlToVideo, transcodeToMp4 } from './record.js'
 export type { RecordVideoOptions } from './record.js'
-export { uploadToShareHost } from './upload.js'
+// uploadToShareHost is intentionally not exported: it has no share-safety gate.
+// runToVideo's maybePublish() is the only path that may call it, after a
+// verdict check. A caller that needs to publish a file directly should build
+// its own verdict with assessShareSafety/redactForShare and check shareAllowed
+// first, not reach around the gate.
 export type { ShareHost, LitterboxExpiry, UploadOptions } from './upload.js'
 
 export { renderCodeCapsuleHtml } from './renderers/code-capsule.js'

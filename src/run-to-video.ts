@@ -291,6 +291,29 @@ export async function runToVideo(
   const safe: readonly Span[] = shared.value.spans
   const verdict = shared.verdict
   const renderOpts: RunToVideoOptions = { ...opts, title, result: shared.value.result }
+  // 'composed' and 'orbit' embed pixels no text detector reads: agent
+  // screenshots/videos/docs pulled straight from the trace (extractArtifacts)
+  // and the caller's orbitFrames. The span-only verdict above says nothing
+  // about them, so treat any such clip as UNKNOWN, same as an ingested --video.
+  const embeddedArtifacts = extractArtifacts(safe)
+  const hasOrbit = Boolean(opts.orbitFrames && opts.orbitFrames.length > 0)
+  const hasEmbeddedMedia =
+    hasOrbit ||
+    embeddedArtifacts.renders.length > 0 ||
+    embeddedArtifacts.videos.length > 0 ||
+    embeddedArtifacts.docs.length > 0
+  const mediaKindVerdict = hasEmbeddedMedia
+    ? combineVerdicts(verdict.profile, [verdict], [
+        `media: this clip embeds ${[
+          hasOrbit ? 'orbit frames' : '',
+          embeddedArtifacts.renders.length > 0 ? 'rendered images' : '',
+          embeddedArtifacts.videos.length > 0 ? 'generated videos' : '',
+          embeddedArtifacts.docs.length > 0 ? 'generated documents' : '',
+        ]
+          .filter(Boolean)
+          .join(', ')}, so their pixels cannot be checked`,
+      ])
+    : verdict
   const requested = opts.kinds && opts.kinds.length ? opts.kinds : supportedKinds(safe)
   // An ingested recording becomes the screen capsule → drop the screenshot replay.
   const kinds = resolveKinds(requested, Boolean(opts.video))
@@ -322,8 +345,9 @@ export async function runToVideo(
       // Audio pass (opt-in): lay narration + music + the agent's own audio over
       // the silent recording. Fail soft — a film without sound still ships.
       videoPath = await maybeAddAudio(videoPath, kind, safe, title, renderOpts)
+      const kindVerdict = kind === 'composed' || kind === 'orbit' ? mediaKindVerdict : verdict
       try {
-        results.push({ kind, htmlPath, videoPath, url: await maybePublish(videoPath, renderOpts, verdict) })
+        results.push({ kind, htmlPath, videoPath, url: await maybePublish(videoPath, renderOpts, kindVerdict) })
       } catch (err) {
         results.push({ kind, htmlPath, videoPath, error: err instanceof Error ? err.message : String(err) })
       }
