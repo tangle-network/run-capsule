@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@tangle-network/agent-eval':
-        specifier: '>=0.189.0 <0.191.0'
-        version: 0.190.1
+        specifier: '>=0.191.0 <0.192.0'
+        version: 0.191.0
       playwright:
         specifier: ^1.57.0
         version: 1.60.0
@@ -1320,16 +1320,16 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@tangle-network/agent-eval@0.190.1':
-    resolution: {integrity: sha512-Dkls12hBPs8ZhCd14ShA9OawPQdDAJadwA8jG6xXy2FcCAoMkI+rXVbyYIy3AcnO61Y2ONmTEdCVJTEGubeNwQ==}
+  '@tangle-network/agent-eval@0.191.0':
+    resolution: {integrity: sha512-eG+hZR6x5Hm6rzNHVkbaNbKVxdJFOqnZZcbsDz4waYVEIQkG1WTHqCpwpe30XiU/5+K9rhNSK0qcPJ8+F4U60w==}
     engines: {node: '>=20.19.0'}
     hasBin: true
 
   '@tangle-network/agent-interface@2.9.0':
     resolution: {integrity: sha512-/6TdW76sfkoC4CL7vn9ET6/KQmRmIhtsJzTtxBr67kySThcAZjFLu7AKSfdQZ7SknlgoJ2IGAx1gK9OnW1YFag==}
 
-  '@tangle-network/agent-trace-contract@1.0.2':
-    resolution: {integrity: sha512-v7uMh56jkEp4vckevEU9xKsIatbs5dqzGPp69dFLSSXUVit0RP6VD6EANMXVlTCUk+6wVKBLHJx23XspVCEiIA==}
+  '@tangle-network/agent-trace-contract@1.2.0':
+    resolution: {integrity: sha512-B1CC4tiZcpwPPj68e1s7fQsOFe8gdDnIGsLQ+eE/HplZgym/giDlpDNmjcOyPDsBREAWwSDMLJMYAiQGpFgHcw==}
 
   '@tangle-network/brand@1.5.0':
     resolution: {integrity: sha512-ZxfEz2tMAvw4qCPtxSboOlyIoGXvwC3+1BbDXN1WLwGnINRqqFCUO5/rTAvonVmX4eFrA6G6zFfwBDvd4ENx3g==}
@@ -3799,13 +3799,13 @@ snapshots:
       '@tangle-network/agent-interface': 2.9.0
       zod: 4.5.4
 
-  '@tangle-network/agent-eval@0.190.1':
+  '@tangle-network/agent-eval@0.191.0':
     dependencies:
       '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.5.4)
       '@hono/node-server': 2.1.1(hono@4.13.7)
       '@tangle-network/agent-core': 0.9.6
       '@tangle-network/agent-interface': 2.9.0
-      '@tangle-network/agent-trace-contract': 1.0.2
+      '@tangle-network/agent-trace-contract': 1.2.0
       hono: 4.13.7
       linear-sum-assignment: 1.0.9
       re2js: 2.8.6
@@ -3820,7 +3820,7 @@ snapshots:
       spdx-expression-parse: 5.0.0
       zod: 4.5.4
 
-  '@tangle-network/agent-trace-contract@1.0.2': {}
+  '@tangle-network/agent-trace-contract@1.2.0': {}
 
   '@tangle-network/brand@1.5.0(react@19.2.7)':
     optionalDependencies:
