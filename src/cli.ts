@@ -101,7 +101,10 @@ function help(): void {
   --voice <v>          TTS voice (default alloy)
   --upload             Publish each clip to a public host and print its link.
                        Off by default: clips stay in --out. Anyone with a link
-                       can view the clip, so upload only runs safe to share.
+                       can view the clip. The trace is redacted with the share
+                       profile first, and a clip whose share-safety verdict is
+                       UNSAFE or UNKNOWN is refused and kept local. An ingested
+                       --video is always UNKNOWN: its frames cannot be read.
   --host <h>           With --upload: litterbox (temp, default) | catbox (permanent)
   --expiry <e>         With --upload: 1h|12h|24h|72h (litterbox, default 72h)
   --no-mp4             Keep .webm
@@ -171,8 +174,10 @@ async function main() {
   })
   console.log(`\n=== ${results.length} capsule(s) → ${runDir} ===`)
   for (const r of results) {
-    console.log(`  ${r.kind.padEnd(9)} ${r.url ?? r.videoPath ?? `FAILED: ${r.error}`}`)
+    const where = r.url ?? r.videoPath ?? 'no clip'
+    console.log(`  ${r.kind.padEnd(9)} ${where}${r.error ? `\n            ${r.error}` : ''}`)
   }
+  if (results.some((r) => r.error)) process.exitCode = 1
 }
 
 main().catch((err) => { console.error('Fatal:', err); process.exit(1) })

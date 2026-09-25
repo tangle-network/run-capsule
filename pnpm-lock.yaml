@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@tangle-network/agent-eval':
-        specifier: '>=0.181.0 <0.182.0'
-        version: 0.181.0
+        specifier: '>=0.189.0 <0.190.0'
+        version: 0.189.0
       playwright:
         specifier: ^1.57.0
         version: 1.60.0
@@ -1311,8 +1311,8 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@tangle-network/agent-eval@0.181.0':
-    resolution: {integrity: sha512-TP2Z37oTo/8fDGDwSrAMrjgZ86FA9Vk6wwdpr1+l8cw3wS5T7cPsO2UxjG/9nY2Bq5wrWBROVDKpYo5VlEVCAg==}
+  '@tangle-network/agent-eval@0.189.0':
+    resolution: {integrity: sha512-gKUY8cWcizlRTC5r58uu73Xuim4jSazx3X3PjGUOXymVplPCp9OpYLa1X1rbWI8sajDyNoz6cVw4O5FZg07BCg==}
     engines: {node: '>=20.19.0'}
     hasBin: true
 
@@ -2493,6 +2493,10 @@ packages:
 
   simple-get@4.0.1:
     resolution: {integrity: sha512-brv7p5WgH0jmQJr1ZDDfKDOSeWWg+OVypG99A/5vYGPqJ6pxiaHLy8nxtFjBA7oMa01ebA9gfh1uMCFqOuXxvA==}
+
+  smol-toml@1.8.0:
+    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
+    engines: {node: '>= 18'}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -3767,7 +3771,7 @@ snapshots:
       '@tangle-network/agent-interface': 2.9.0
       zod: 4.5.4
 
-  '@tangle-network/agent-eval@0.181.0':
+  '@tangle-network/agent-eval@0.189.0':
     dependencies:
       '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.5.4)
       '@hono/node-server': 2.1.1(hono@4.13.7)
@@ -3777,6 +3781,7 @@ snapshots:
       hono: 4.13.7
       linear-sum-assignment: 1.0.9
       re2js: 2.8.6
+      smol-toml: 1.8.0
       zod: 4.5.4
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -5362,6 +5367,8 @@ snapshots:
       once: 1.4.0
       simple-concat: 1.0.1
     optional: true
+
+  smol-toml@1.8.0: {}
 
   source-map-js@1.2.1: {}
 

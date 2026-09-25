@@ -334,7 +334,11 @@ export async function runToVideo(
 
   fs.writeFileSync(
     path.join(runDir, 'capsule.json'),
-    JSON.stringify({ runId, title, results: results.map(({ kind, url, videoPath }) => ({ kind, url, videoPath })) }, null, 2),
+    JSON.stringify(
+      { runId, title, verdict: verdict.status, results: results.map(({ kind, url, videoPath, error }) => ({ kind, url, videoPath, error })) },
+      null,
+      2,
+    ),
   )
   return { runDir, results }
 }
