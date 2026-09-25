@@ -45,7 +45,7 @@
     "prepublishOnly": "pnpm run check:cohort-ranges && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@tangle-network/agent-eval": ">=0.189.0 <0.190.0",
+    "@tangle-network/agent-eval": ">=0.189.0 <0.191.0",
     "playwright": "^1.57.0"
   },
   "devDependencies": {
