@@ -33,7 +33,6 @@ export { renderConversationCapsuleHtml, conversationStepsFromSpans } from './ren
 export type { ConversationTurn, ConversationCapsuleOptions } from './renderers/conversation-capsule.js'
 
 // Redact secrets from a trace before it is published (called by runToVideo).
-export { redactSpans } from './redact.js'
 
 // Directing pass — narrative-aware shot timing for the replay capsule.
 export { directStoryboard } from './direct.js'
