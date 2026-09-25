@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@tangle-network/agent-eval':
-        specifier: '>=0.191.0 <0.192.0'
-        version: 0.191.0
+        specifier: '>=0.193.0 <0.194.0'
+        version: 0.193.0
       playwright:
         specifier: ^1.57.0
         version: 1.60.0
@@ -1320,8 +1320,8 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@tangle-network/agent-eval@0.191.0':
-    resolution: {integrity: sha512-eG+hZR6x5Hm6rzNHVkbaNbKVxdJFOqnZZcbsDz4waYVEIQkG1WTHqCpwpe30XiU/5+K9rhNSK0qcPJ8+F4U60w==}
+  '@tangle-network/agent-eval@0.193.0':
+    resolution: {integrity: sha512-u557gI6MubFmqaI07wMLN2v0HaOkrlDv4bksZ8hRALPwPWFrgooQI1Te7tEn+IFZ0/w1nUyU4adycueuLPw6Zg==}
     engines: {node: '>=20.19.0'}
     hasBin: true
 
@@ -3799,7 +3799,7 @@ snapshots:
       '@tangle-network/agent-interface': 2.9.0
       zod: 4.5.4
 
-  '@tangle-network/agent-eval@0.191.0':
+  '@tangle-network/agent-eval@0.193.0':
     dependencies:
       '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.5.4)
       '@hono/node-server': 2.1.1(hono@4.13.7)
