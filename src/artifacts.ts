@@ -48,10 +48,28 @@ function candidates(span: Span): string[] {
     if (s) out.push(s)
   }
   const a = obj(span.attributes)
-  if (a) for (const k of ['screenshot', 'image', 'video', 'audio', 'pdf', 'doc', 'url', 'href', 'artifact', 'output', 'src', 'file']) push(a[k])
+  if (a)
+    for (const k of [
+      'screenshot',
+      'screenshotUrl',
+      'image',
+      'video',
+      'audio',
+      'pdf',
+      'doc',
+      'url',
+      'href',
+      'artifact',
+      'output',
+      'src',
+      'file',
+    ])
+      push(a[k])
   push((span as { result?: unknown }).result)
   const r = obj((span as { result?: unknown }).result)
-  if (r) for (const k of ['url', 'src', 'video', 'audio', 'pdf', 'path', 'artifact']) push(r[k])
+  if (r)
+    for (const k of ['url', 'src', 'video', 'audio', 'pdf', 'path', 'artifact', 'screenshot', 'image'])
+      push(r[k])
   const args = obj((span as { args?: unknown }).args)
   if (args) for (const k of ['url', 'src', 'path', 'output', 'outputPath']) push(args[k])
   return out
