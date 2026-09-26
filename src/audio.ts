@@ -38,16 +38,40 @@ export async function synthesizeNarration(
 ): Promise<string | undefined> {
   if (!cfg.routerKey || !text.trim()) return undefined
   try {
-    const res = await fetch(`${cfg.routerBaseUrl.replace(/\/$/, '')}/audio/speech`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.routerKey}` },
-      body: JSON.stringify({ model: cfg.model ?? 'gpt-4o-mini-tts', voice: cfg.voice ?? 'alloy', input: text.slice(0, 3500), format: 'mp3' }),
+    const baseUrl = cfg.routerBaseUrl.replace(/\/v1\/?$/, '').replace(/\/$/, '')
+    const source: ResolvedDataSource = {
+      id: 'run-capsule-narration',
+      projectId: 'run-capsule',
+      publishedAgentId: null,
+      kind: 'openai',
+      label: 'run-capsule narration',
+      consistencyModel: 'authoritative',
+      scopes: [],
+      metadata: { baseUrl },
+      credentials: { kind: 'api-key', apiKey: cfg.routerKey },
+      status: 'active',
+    }
+    const result = await openaiConnector.executeMutation?.({
+      source,
+      capabilityName: 'audio.speech.create',
+      args: {
+        model: cfg.model ?? 'gpt-4o-mini-tts',
+        voice: cfg.voice ?? 'alloy',
+        input: text.slice(0, 3500),
+        response_format: 'mp3',
+      },
+      idempotencyKey: `run-capsule-narration-${Date.now()}`,
     })
-    if (!res.ok) {
-      console.warn(`[audio] TTS ${res.status} — narration skipped`)
+    if (!result || result.status !== 'committed') {
+      console.warn('[audio] TTS did not commit — narration skipped')
       return undefined
     }
-    const buf = Buffer.from(await res.arrayBuffer())
+    const payload = result.data as { base64?: string }
+    if (!payload.base64) {
+      console.warn('[audio] TTS returned no audio — narration skipped')
+      return undefined
+    }
+    const buf = Buffer.from(payload.base64, 'base64')
     const out = path.join(outDir, 'narration.mp3')
     fs.writeFileSync(out, buf)
     return out
