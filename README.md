@@ -27,7 +27,13 @@ npx run-capsule --demo --upload                    # also publish each clip (tem
 # Reuse a driver's already-rendered run video (cursor overlay baked in) as the
 # screen capsule, with the reasoning storyboard from the trace alongside:
 npx run-capsule --playwright report.json --video recording.webm
+
+# Opt-in heavier kinds: a 1:1 sandbox-ui run view, a rendered-model spin, and
+# the full sequenced film (scoreboard shot from an eval verdict, VO, music):
+npx run-capsule --demo --kinds studio,orbit,composed --orbit-dir ./frames --result verdict.json --narrate --music
 ```
+
+Run `npx run-capsule --help` for the full flag reference (source of truth — do not duplicate it here); the table below explains what each rendered kind shows and where its input comes from.
 
 ## What it renders
 
@@ -40,6 +46,11 @@ npx run-capsule --playwright report.json --video recording.webm
 | `screen` | browser/computer-use spans, or an ingested `--video` | real screenshots replayed with action + 💭 reasoning captions — or, with `--video`, the driver's own recording (cursor overlay baked in) passed through |
 | `conversation` | llm messages | the back-and-forth reasoning |
 | `replay` | the whole trace | the unified storyboard (title → moments → summary) |
+| `studio` *(opt-in)* | the whole trace | the 1:1 sandbox-ui run view |
+| `orbit` *(opt-in)* | `--orbit-dir` frames | a rendered-model spin |
+| `composed` *(opt-in)* | everything above | the full sequenced film: intro/outro cards, an animated scoreboard shot when `--result` is given, and narration/music when `--narrate`/`--music` are set |
+
+`studio`, `orbit` and `composed` are heavier and not auto-detected — pass them explicitly with `--kinds`.
 
 With `--video <file>` the `screen` capsule is the supplied recording itself (transcoded, and uploaded only with `--upload`), and the screenshot replay is suppressed — so a [`@tangle-network/browser-agent-driver`](https://github.com/tangle-network/browser-agent-driver) run rendered with `--show-cursor` keeps its real animated cursor, while the trace still drives the storyboard. The overlay is rendered once, in the driver; run-capsule reuses it.
 
@@ -96,13 +107,24 @@ nix develop          # devShell with node, pnpm, ffmpeg, and Chromium wired for 
 
 ## API
 
-- `runToVideo(spans, { title, kinds?, outDir, upload?, host?, expiry?, toMp4?, video? })` → `{ runDir, results }`. `upload` defaults to false; set it to publish each clip and fill `results[].url`. Pass `video` to ingest an already-rendered recording as the screen capsule.
-- `supportedKinds(spans)` → which capsules the trace supports
+- `runToVideo(spans, { title, kinds?, outDir, upload?, host?, expiry?, toMp4?, video?, orbitFrames?, result?, narrate?, music?, voice? })` → `{ runDir, results }`. `upload` defaults to false; set it to publish each clip and fill `results[].url`. Pass `video` to ingest an already-rendered recording as the screen capsule; pass `result` (an eval verdict) to drive the `composed` film's scoreboard shot.
+- `supportedKinds(spans)` → which auto-detected capsules the trace supports (excludes the opt-in `studio`/`orbit`/`composed`)
 - `resolveKinds(kinds, hasVideo)` → kinds to render, dropping `screen` when a video is ingested
-- `renderCodeCapsuleHtml` / `renderTerminalCapsuleHtml` / `renderScreenCapsuleHtml` / `renderConversationCapsuleHtml`
+- `renderCodeCapsuleHtml` / `renderTerminalCapsuleHtml` / `renderScreenCapsuleHtml` / `renderConversationCapsuleHtml` / `renderOrbitCapsuleHtml`
+- `directStoryboard(spans, opts)` → narrative-aware shot timing for the `replay` capsule
+- `autoCompose(spans, opts)` / `renderCompositionHtml` / `renderCardHtml` → sequence per-capsule clips into the `composed` film
+- `renderScoreboardHtml`, `renderIntroHtml`, `renderOutroHtml` → the film's verdict and bookend cards
 - `recordHtmlToVideo(htmlPath, outDir, opts)` → `{ webm, mp4? }`; `transcodeToMp4(src, outMp4)` → H.264 mp4 path
-- `uploadToShareHost(file, { host, expiry })` → public URL (publishes the file)
-- the adapters above
+- the adapters listed above
+
+`uploadToShareHost` is **not exported**. It has no share-safety gate on its own; `runToVideo`'s internal `maybePublish()` is the only caller, and only after a `SAFE`/`SAFE_WITH_WARNINGS` verdict. See [AGENTS.md](AGENTS.md) before reaching around it.
+
+Resolve the current, complete export list from [src/index.ts](src/index.ts) — this section is a guide, not the source of truth.
+
+## Related packages
+
+- [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) owns the `Span[]`/storyboard IR this package renders and the redaction/share-safety core (`redactForShare`, `assessShareSafety`) that gates every upload. run-capsule never carries its own credential or PII patterns.
+- [`@tangle-network/traces`](https://github.com/tangle-network/traces) is the CLI/SDK surface for *analyzing* the same trace (contracts, diffs, facts); run-capsule *renders* it. Both consume the same span contract.
 
 ## License
 
