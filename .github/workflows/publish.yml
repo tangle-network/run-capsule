@@ -14,9 +14,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -27,11 +27,14 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       # OIDC trusted publishing needs npm >= 11.5.1 (Node 22 ships npm 10), and
-      # no `workspace:` deps here so `npm publish` is safe. Idempotent: skip if
-      # the tagged version is already on the registry.
+      # no `workspace:` deps here so `npm publish` is safe. Pin the exact npm
+      # that agent-sdk and agent-eval publish with; npm 12.0.0 shipped without a
+      # provenance dependency, so a floating `latest` can break a release.
+      # Idempotent: skip if the tagged version is already on the registry.
       - name: Publish to npm (OIDC trusted publishing)
         run: |
-          npm install -g npm@latest
+          npm install -g npm@12.1.0
+          test "$(npm --version)" = '12.1.0'
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
           if npm view "$NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then

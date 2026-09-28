@@ -2,8 +2,8 @@
 #
 # Based on the official Playwright image (Chromium + all system libs
 # preinstalled); we add ffmpeg for the MP4 transcode. Keep the tag in sync with
-# the `playwright` version this package resolves (currently 1.60.x).
-FROM mcr.microsoft.com/playwright:v1.60.0-jammy
+# the `playwright` version this package resolves (currently 1.63.x).
+FROM mcr.microsoft.com/playwright:v1.63.0-resolute
 
 # ffmpeg → MP4 transcode (without it, output stays .webm).
 RUN apt-get update \
@@ -16,7 +16,7 @@ RUN corepack enable
 # Browsers already live in the image (/ms-playwright) — don't re-download them.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 RUN pnpm install --no-frozen-lockfile
 COPY . .
 RUN pnpm build
