@@ -1,0 +1,10 @@
+# First-party releases skip pnpm's default minimum release age; this package
+# tracks their newest versions as soon as they publish.
+minimumReleaseAgeExclude:
+  - "@tangle-network/*"
+allowBuilds:
+  # scripts/build-studio.mjs bundles the studio player with esbuild.
+  esbuild: true
+  # pdfjs-dist (through @tangle-network/ui's react-pdf) lists canvas for
+  # Node-side rendering; the studio bundle renders in a browser and never loads it.
+  canvas: false

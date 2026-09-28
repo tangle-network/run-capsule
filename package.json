@@ -1,7 +1,7 @@
 {
   "name": "@tangle-network/run-capsule",
-  "version": "0.6.3",
-  "description": "Turn any agent run's trace into a shareable video — code/terminal/screen/conversation capsule animations, recorded headless to local files, with opt-in upload to a temporary public link. Secrets are redacted before rendering. Consumer of @tangle-network/agent-eval/storyboard.",
+  "version": "0.6.4",
+  "description": "Turn any agent run's trace into a shareable video \u2014 code/terminal/screen/conversation capsule animations, recorded headless to local files, with opt-in upload to a temporary public link. Secrets are redacted before rendering. Consumer of @tangle-network/agent-eval/storyboard.",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -37,8 +37,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup && node scripts/build-studio.mjs",
-    "dev": "tsup --watch",
+    "build": "tsdown && node scripts/build-studio.mjs",
+    "dev": "tsdown --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check:cohort-ranges": "node scripts/check-cohort-ranges.mjs",
@@ -46,25 +46,25 @@
   },
   "dependencies": {
     "@tangle-network/agent-eval": ">=0.197.0 <0.198.0",
-    "playwright": "^1.57.0"
+    "playwright": "^1.63.0"
   },
   "devDependencies": {
-    "@tangle-network/agent-interface": "^2.6.0",
-    "@tangle-network/brand": "^1.5.0",
-    "@tangle-network/sandbox-ui": ">=0.113.3 <0.114.0",
-    "@tangle-network/ui": "^11.5.0",
-    "@types/node": "^24.3.0",
-    "@types/react": "^19.2.16",
-    "@types/react-dom": "^19.2.3",
-    "esbuild": "^0.28.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "tsup": "^8.0.0",
-    "typescript": "^5.5.0",
-    "vitest": "^3.2.4"
+    "@tangle-network/agent-interface": "^2.13.1",
+    "@tangle-network/brand": "^1.8.0",
+    "@tangle-network/sandbox-ui": ">=0.114.0 <0.115.0",
+    "@tangle-network/ui": "^11.10.0",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.33.4"
+  "packageManager": "pnpm@12.6.0"
 }
