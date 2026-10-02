@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@tangle-network/agent-eval": ">=0.197.0 <0.198.0",
+    "@tangle-network/agent-integrations": ">=0.59.2 <0.60.0",
     "playwright": "^1.63.0"
   },
   "devDependencies": {
