@@ -12,10 +12,13 @@
  */
 
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
+import type { ResolvedDataSource } from '@tangle-network/agent-integrations'
+import { openaiConnector } from '@tangle-network/agent-integrations/connectors/adapters'
 
 const execFileAsync = promisify(execFile)
 
@@ -37,16 +40,52 @@ export async function synthesizeNarration(
 ): Promise<string | undefined> {
   if (!cfg.routerKey || !text.trim()) return undefined
   try {
-    const res = await fetch(`${cfg.routerBaseUrl.replace(/\/$/, '')}/audio/speech`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.routerKey}` },
-      body: JSON.stringify({ model: cfg.model ?? 'gpt-4o-mini-tts', voice: cfg.voice ?? 'alloy', input: text.slice(0, 3500), format: 'mp3' }),
+    const endpoint = new URL(cfg.routerBaseUrl)
+    if (endpoint.origin !== 'https://router.tangle.tools'
+      || !['/', '/v1', '/v1/'].includes(endpoint.pathname)
+      || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+      throw new Error('narration requires the Tangle Router speech endpoint')
+    }
+    const source: ResolvedDataSource = {
+      id: 'run-capsule-narration',
+      projectId: 'run-capsule',
+      publishedAgentId: null,
+      kind: 'openai',
+      label: 'run-capsule narration',
+      consistencyModel: 'authoritative',
+      scopes: [],
+      metadata: { baseUrl: endpoint.origin },
+      credentials: { kind: 'api-key', apiKey: cfg.routerKey },
+      status: 'active',
+    }
+    const input = text.slice(0, 3500)
+    const model = cfg.model ?? 'gpt-4o-mini-tts'
+    const voice = cfg.voice ?? 'alloy'
+    const result = await openaiConnector.executeMutation?.({
+      source,
+      capabilityName: 'audio.speech.create',
+      args: {
+        model,
+        voice,
+        input,
+        response_format: 'mp3',
+      },
+      idempotencyKey: `run-capsule-narration-${createHash('sha256').update(JSON.stringify([model, voice, input])).digest('hex')}`,
     })
-    if (!res.ok) {
-      console.warn(`[audio] TTS ${res.status} — narration skipped`)
+    if (result?.status !== 'committed') {
+      console.warn('[audio] TTS did not commit — narration skipped')
       return undefined
     }
-    const buf = Buffer.from(await res.arrayBuffer())
+    const payload = result.data as { base64?: unknown }
+    if (typeof payload?.base64 !== 'string') {
+      console.warn('[audio] TTS returned no audio — narration skipped')
+      return undefined
+    }
+    const buf = Buffer.from(payload.base64, 'base64')
+    if (buf.length === 0) {
+      console.warn('[audio] TTS returned empty audio — narration skipped')
+      return undefined
+    }
     const out = path.join(outDir, 'narration.mp3')
     fs.writeFileSync(out, buf)
     return out
