@@ -8,11 +8,48 @@ on:
 
 permissions:
   contents: read
-  id-token: write # OIDC → npm trusted publisher + provenance
 
 jobs:
+  # Tests run on the self-hosted runners and decide whether this tag publishes:
+  # a tagged version already on the registry skips the hosted publish job.
+  verify:
+    runs-on: [self-hosted, ci-public]
+    outputs:
+      publish: ${{ steps.registry.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: pnpm install --no-frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - run: pnpm run check:cohort-ranges
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Check registry for the tagged version
+        id: registry
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "$NAME@$VERSION already on registry; skipping publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # npm trusted publishing accepts OIDC only from GitHub-hosted runners, so this
+  # job starts only when the verified version is not yet on npm.
   publish:
+    needs: verify
+    if: needs.verify.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC → npm trusted publisher + provenance
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -23,22 +60,14 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-      - run: pnpm typecheck
-      - run: pnpm test
       - run: pnpm build
       # OIDC trusted publishing needs npm >= 11.5.1 (Node 22 ships npm 10), and
       # no `workspace:` deps here so `npm publish` is safe. Pin the exact npm
       # that agent-sdk and agent-eval publish with; npm 12.0.0 shipped without a
       # provenance dependency, so a floating `latest` can break a release.
-      # Idempotent: skip if the tagged version is already on the registry.
+      # --ignore-scripts: prepublishOnly's checks already ran in the verify job.
       - name: Publish to npm (OIDC trusted publishing)
         run: |
           npm install -g npm@12.1.0
           test "$(npm --version)" = '12.1.0'
-          NAME=$(node -p "require('./package.json').name")
-          VERSION=$(node -p "require('./package.json').version")
-          if npm view "$NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "$NAME@$VERSION already on registry; skipping"
-          else
-            npm publish --provenance --access public --registry=https://registry.npmjs.org
-          fi
+          npm publish --provenance --access public --ignore-scripts --registry=https://registry.npmjs.org
