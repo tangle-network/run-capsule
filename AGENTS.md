@@ -58,15 +58,12 @@ already owns:
 
 ## Validation
 
-Run from the package root:
+Merge `origin/main` before code qualification, then run the canonical local gate from the package root:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm run check:cohort-ranges   # the rendered timing cohorts stay in their declared ranges
-pnpm test
-pnpm build                     # dist/index.js (SDK), dist/cli.js (bin), the bundled studio assets
+beelink-gate --no-install auto https://github.com/tangle-network/run-capsule.git <full-sha> -- bash -lc 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile && pnpm typecheck && pnpm run check:cohort-ranges && pnpm build && pnpm test'
 ```
 
-`npx run-capsule --demo` renders the built-in sample end to end (no network required unless
-`--upload` is also passed) and is the fastest real-run check that rendering and encoding both work.
+The gate owns the frozen install explicitly to retain the browser-download opt-out. Build finishes before tests; the cohort check retains declared timing ranges. Workflow and documentation changes use YAML and content checks. Automatic PR/main CI is retired; tag publication and `prepublishOnly` retain their own qualification.
+
+For rendering changes, run the documented demo through the same admitted gate after building, with the browser and ffmpeg prerequisites from [README.md](README.md#system-dependencies). Keep upload opt-in; a local qualification pass does not establish a rendered or published clip.
