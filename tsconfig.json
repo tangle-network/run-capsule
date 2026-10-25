@@ -4,6 +4,7 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
+    "isolatedDeclarations": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
