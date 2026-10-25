@@ -61,9 +61,9 @@ already owns:
 Merge `origin/main` before code qualification, then run the canonical local gate from the package root:
 
 ```bash
-beelink-gate --no-install auto https://github.com/tangle-network/run-capsule.git <full-sha> -- bash -lc 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile && pnpm typecheck && pnpm run check:cohort-ranges && pnpm build && pnpm test'
+beelink-gate auto https://github.com/tangle-network/run-capsule.git <full-sha> -- bash -lc 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile && pnpm typecheck && pnpm run check:cohort-ranges && pnpm build && pnpm test'
 ```
 
-The gate owns the frozen install explicitly to retain the browser-download opt-out. Build finishes before tests; the cohort check retains declared timing ranges. Workflow and documentation changes use YAML and content checks. Automatic PR/main CI is retired; tag publication and `prepublishOnly` retain their own qualification.
+The normal gate retains install-capacity admission and performs its frozen bootstrap first; the explicit frozen-install pass retains its browser-download opt-out for that pass. Build finishes before tests; the cohort check retains declared timing ranges. Workflow and documentation changes use YAML and content checks. Automatic PR/main CI is retired; tag publication and `prepublishOnly` retain their own qualification.
 
 For rendering changes, run the documented demo through the same admitted gate after building, with the browser and ffmpeg prerequisites from [README.md](README.md#system-dependencies). Keep upload opt-in; a local qualification pass does not establish a rendered or published clip.
