@@ -8,6 +8,7 @@
  */
 
 import type { Span } from '@tangle-network/agent-eval'
+import { classifyTool } from '@tangle-network/agent-eval/storyboard'
 
 export interface ScreenStep {
   label: string
@@ -29,15 +30,13 @@ function isImg(s: string | undefined): s is string {
   return !!s && (s.startsWith('data:image') || /^https?:\/\//.test(s))
 }
 
-const SCREEN = /(browser|playwright|puppeteer|computer|cua|desktop|gui|navigate|goto|click|type|screenshot|page|scroll|hover|press|dom)/i
-
 /** Pull screen steps from a run's spans, in order. */
 export function screenStepsFromSpans(spans: readonly Span[]): ScreenStep[] {
   const out: ScreenStep[] = []
   for (const span of [...spans].sort((a, b) => a.startedAt - b.startedAt)) {
-    if (span.kind !== 'tool') continue
+    const cls = classifyTool(span)
+    if (span.kind !== 'tool' || (cls !== 'browser' && cls !== 'computer')) continue
     const tool = span as Extract<Span, { kind: 'tool' }>
-    if (!SCREEN.test(tool.toolName)) continue
     const a = obj(tool.args)
     const attrs = obj(span.attributes)
     const result = obj(tool.result)

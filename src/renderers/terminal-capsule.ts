@@ -7,6 +7,7 @@
  */
 
 import type { Span } from '@tangle-network/agent-eval'
+import { classifyTool } from '@tangle-network/agent-eval/storyboard'
 
 export interface TerminalStep {
   command: string
@@ -26,12 +27,11 @@ function asText(v: unknown, max = 1600): string {
   return s.length > max ? `${s.slice(0, max)}\n…(${s.length - max} more)` : s
 }
 
-const SHELL = /^(shell|bash|sh|exec|run|terminal|command|process|npm|pnpm|yarn|git|cargo|forge|python)/i
-
 /** Pull terminal steps (command + output) from a run's spans, in order. */
 export function terminalStepsFromSpans(spans: readonly Span[]): TerminalStep[] {
   const out: TerminalStep[] = []
   for (const span of [...spans].sort((a, b) => a.startedAt - b.startedAt)) {
+    if (classifyTool(span) !== 'shell') continue
     if (span.kind === 'sandbox') {
       const sb = span as Extract<Span, { kind: 'sandbox' }>
       const tests = (sb.testsTotal ?? 0) > 0 ? `${sb.testsPassed ?? 0}/${sb.testsTotal} tests passing` : ''
@@ -42,7 +42,6 @@ export function terminalStepsFromSpans(spans: readonly Span[]): TerminalStep[] {
       })
     } else if (span.kind === 'tool') {
       const tool = span as Extract<Span, { kind: 'tool' }>
-      if (!SHELL.test(tool.toolName)) continue
       const command =
         (typeof tool.args === 'string' ? tool.args : str(obj(tool.args)?.command) ?? str(obj(tool.args)?.cmd)) ??
         tool.toolName
