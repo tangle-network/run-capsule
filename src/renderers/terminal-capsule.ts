@@ -7,7 +7,7 @@
  */
 
 import type { Span } from '@tangle-network/agent-eval'
-import { classifyTool, extractVisual } from '@tangle-network/agent-eval/storyboard'
+import { classifyTool } from '@tangle-network/agent-eval/storyboard'
 
 export interface TerminalStep {
   command: string
@@ -15,24 +15,39 @@ export interface TerminalStep {
   exitCode?: number
 }
 
-/** Pull terminal steps (command + output) from a run's spans, in order. A step
- *  is any span agent-eval's storyboard classifies as a shell command. */
+function str(v: unknown): string | undefined {
+  return typeof v === 'string' && v.length > 0 ? v : undefined
+}
+function obj(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined
+}
+function asText(v: unknown, max = 1600): string {
+  if (v == null) return ''
+  const s = typeof v === 'string' ? v : JSON.stringify(v)
+  return s.length > max ? `${s.slice(0, max)}\n…(${s.length - max} more)` : s
+}
+
+/** Pull terminal steps (command + output) from a run's spans, in order. */
 export function terminalStepsFromSpans(spans: readonly Span[]): TerminalStep[] {
   const out: TerminalStep[] = []
   for (const span of [...spans].sort((a, b) => a.startedAt - b.startedAt)) {
     if (classifyTool(span) !== 'shell') continue
-    const visual = extractVisual(span)
-    if (visual.type !== 'terminal') continue
     if (span.kind === 'sandbox') {
+      const sb = span as Extract<Span, { kind: 'sandbox' }>
+      const tests = (sb.testsTotal ?? 0) > 0 ? `${sb.testsPassed ?? 0}/${sb.testsTotal} tests passing` : ''
       out.push({
-        command: visual.command,
-        output: visual.output ?? (span.exitCode === 0 ? 'ok' : ''),
-        exitCode: span.exitCode,
+        command: sb.command ?? span.name,
+        output: [tests, span.error].filter(Boolean).join('\n') || (sb.exitCode === 0 ? 'ok' : ''),
+        exitCode: sb.exitCode,
       })
-    } else {
+    } else if (span.kind === 'tool') {
+      const tool = span as Extract<Span, { kind: 'tool' }>
+      const command =
+        (typeof tool.args === 'string' ? tool.args : str(obj(tool.args)?.command) ?? str(obj(tool.args)?.cmd)) ??
+        tool.toolName
       out.push({
-        command: visual.command,
-        output: visual.output ?? '',
+        command,
+        output: asText(tool.result),
         exitCode: span.status === 'error' ? 1 : 0,
       })
     }

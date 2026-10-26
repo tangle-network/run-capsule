@@ -8,7 +8,7 @@
  */
 
 import type { Span } from '@tangle-network/agent-eval'
-import { classifyTool, extractVisual } from '@tangle-network/agent-eval/storyboard'
+import { classifyTool } from '@tangle-network/agent-eval/storyboard'
 
 export interface ScreenStep {
   label: string
@@ -26,21 +26,28 @@ function str(v: unknown): string | undefined {
 function obj(v: unknown): Record<string, unknown> | undefined {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined
 }
-/** Pull screen steps from a run's spans, in order. A step is any span
- *  agent-eval's storyboard classifies as a browser or computer action. */
+function isImg(s: string | undefined): s is string {
+  return !!s && (s.startsWith('data:image') || /^https?:\/\//.test(s))
+}
+
+/** Pull screen steps from a run's spans, in order. */
 export function screenStepsFromSpans(spans: readonly Span[]): ScreenStep[] {
   const out: ScreenStep[] = []
   for (const span of [...spans].sort((a, b) => a.startedAt - b.startedAt)) {
     const cls = classifyTool(span)
-    if (cls !== 'browser' && cls !== 'computer') continue
-    const visual = extractVisual(span)
-    if (visual.type !== 'browser' || span.kind !== 'tool') continue
+    if (span.kind !== 'tool' || (cls !== 'browser' && cls !== 'computer')) continue
+    const tool = span as Extract<Span, { kind: 'tool' }>
+    const a = obj(tool.args)
     const attrs = obj(span.attributes)
-    const reasoning = str(attrs?.reasoning) ?? str(attrs?.thought) ?? str(obj(span.result)?.reasoning)
+    const result = obj(tool.result)
+    const image =
+      str(attrs?.screenshot) ?? str(attrs?.screenshotUrl) ?? str(attrs?.image) ?? str(attrs?.frame) ??
+      str(result?.screenshot) ?? str(result?.image)
+    const reasoning = str(attrs?.reasoning) ?? str(attrs?.thought) ?? str(result?.reasoning)
     out.push({
-      label: visual.action ?? span.toolName,
-      url: visual.url,
-      image: visual.screenshot,
+      label: str(a?.action) ?? str(a?.selector) ?? tool.toolName,
+      url: str(a?.url) ?? str(attrs?.url),
+      image: isImg(image) ? image : undefined,
       reasoning: reasoning ? reasoning.replace(/\s+/g, ' ').trim().slice(0, 280) : undefined,
     })
   }
