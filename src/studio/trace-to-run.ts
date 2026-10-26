@@ -16,6 +16,7 @@
  */
 
 import type { Span } from '@tangle-network/agent-eval'
+import { classifyTool } from '@tangle-network/agent-eval/storyboard'
 import type {
   Run,
   RunStats,
@@ -49,37 +50,32 @@ interface NormalizedTool {
   input: unknown
 }
 
-/** Map a tool span to sandbox-ui's display name and summary category. */
+/** Map a tool span to sandbox-ui's display name and summary category. The
+ *  class comes from agent-eval's storyboard, the one tool classifier. */
 function normalizeTool(span: Extract<Span, { kind: 'tool' }>): NormalizedTool {
-  const tn = span.toolName.toLowerCase()
   const a = obj(span.args)
-  if (/edit|patch|apply|str_replace|diff/.test(tn)) {
-    return {
-      tool: 'edit',
-      category: 'edit',
-      input: { filePath: str(a?.path) ?? str(a?.file), diff: str(a?.diff) ?? str(a?.patch) },
+  const cls = classifyTool(span)
+  switch (cls) {
+    case 'edit':
+      return { tool: 'edit', category: 'edit', input: { filePath: str(a?.path) ?? str(a?.file), diff: str(a?.diff) ?? str(a?.patch) } }
+    case 'write':
+      return { tool: 'write', category: 'write', input: { filePath: str(a?.path) ?? str(a?.file), content: str(a?.content) } }
+    case 'read':
+      return { tool: 'read', category: 'read', input: { filePath: str(a?.path) ?? str(a?.file) } }
+    case 'grep':
+    case 'glob':
+      return { tool: cls, category: 'search', input: a ?? span.args }
+    case 'computer':
+    case 'browser':
+    case 'api':
+      return { tool: 'fetch', category: 'web', input: a ?? span.args }
+    case 'shell': {
+      const command = typeof span.args === 'string' ? span.args : str(a?.command) ?? str(a?.cmd) ?? span.toolName
+      return { tool: 'bash', category: 'command', input: { command } }
     }
+    case 'other':
+      return { tool: span.toolName, category: 'other', input: span.args }
   }
-  if (/write|create.*file|save/.test(tn)) {
-    return {
-      tool: 'write',
-      category: 'write',
-      input: { filePath: str(a?.path) ?? str(a?.file), content: str(a?.content) },
-    }
-  }
-  if (/read|cat|open|view|get.*file/.test(tn)) {
-    return { tool: 'read', category: 'read', input: { filePath: str(a?.path) ?? str(a?.file) } }
-  }
-  if (/grep|search/.test(tn)) return { tool: 'grep', category: 'search', input: a ?? span.args }
-  if (/glob|find|list/.test(tn)) return { tool: 'glob', category: 'search', input: a ?? span.args }
-  if (/browser|playwright|navigate|goto|page|web|http|fetch/.test(tn)) {
-    return { tool: 'fetch', category: 'web', input: a ?? span.args }
-  }
-  if (/shell|bash|exec|run|terminal|command|sandbox|process|openscad|npm|pnpm|git/.test(tn)) {
-    const command = typeof span.args === 'string' ? span.args : str(a?.command) ?? str(a?.cmd) ?? span.toolName
-    return { tool: 'bash', category: 'command', input: { command } }
-  }
-  return { tool: span.toolName, category: 'other', input: span.args }
 }
 
 function toolPart(span: Extract<Span, { kind: 'tool' }>): {

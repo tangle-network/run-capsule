@@ -8,6 +8,7 @@
  */
 
 import type { Span } from '@tangle-network/agent-eval'
+import { classifyTool, extractVisual } from '@tangle-network/agent-eval/storyboard'
 
 export interface ScreenStep {
   label: string
@@ -25,30 +26,21 @@ function str(v: unknown): string | undefined {
 function obj(v: unknown): Record<string, unknown> | undefined {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined
 }
-function isImg(s: string | undefined): s is string {
-  return !!s && (s.startsWith('data:image') || /^https?:\/\//.test(s))
-}
-
-const SCREEN = /(browser|playwright|puppeteer|computer|cua|desktop|gui|navigate|goto|click|type|screenshot|page|scroll|hover|press|dom)/i
-
-/** Pull screen steps from a run's spans, in order. */
+/** Pull screen steps from a run's spans, in order. A step is any span
+ *  agent-eval's storyboard classifies as a browser or computer action. */
 export function screenStepsFromSpans(spans: readonly Span[]): ScreenStep[] {
   const out: ScreenStep[] = []
   for (const span of [...spans].sort((a, b) => a.startedAt - b.startedAt)) {
-    if (span.kind !== 'tool') continue
-    const tool = span as Extract<Span, { kind: 'tool' }>
-    if (!SCREEN.test(tool.toolName)) continue
-    const a = obj(tool.args)
+    const cls = classifyTool(span)
+    if (cls !== 'browser' && cls !== 'computer') continue
+    const visual = extractVisual(span)
+    if (visual.type !== 'browser' || span.kind !== 'tool') continue
     const attrs = obj(span.attributes)
-    const result = obj(tool.result)
-    const image =
-      str(attrs?.screenshot) ?? str(attrs?.screenshotUrl) ?? str(attrs?.image) ?? str(attrs?.frame) ??
-      str(result?.screenshot) ?? str(result?.image)
-    const reasoning = str(attrs?.reasoning) ?? str(attrs?.thought) ?? str(result?.reasoning)
+    const reasoning = str(attrs?.reasoning) ?? str(attrs?.thought) ?? str(obj(span.result)?.reasoning)
     out.push({
-      label: str(a?.action) ?? str(a?.selector) ?? tool.toolName,
-      url: str(a?.url) ?? str(attrs?.url),
-      image: isImg(image) ? image : undefined,
+      label: visual.action ?? span.toolName,
+      url: visual.url,
+      image: visual.screenshot,
       reasoning: reasoning ? reasoning.replace(/\s+/g, ' ').trim().slice(0, 280) : undefined,
     })
   }
