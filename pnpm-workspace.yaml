@@ -8,5 +8,6 @@ allowBuilds:
   # pdfjs-dist (through @tangle-network/ui's react-pdf) lists canvas for
   # Node-side rendering; the studio bundle renders in a browser and never loads it.
   canvas: false
-  cpu-features: set this to true or false
-  ssh2: set this to true or false
+  # ssh2 and cpu-features are optional native accelerators; the pure-JS paths are used.
+  cpu-features: false
+  ssh2: false
