@@ -50,7 +50,7 @@
     "playwright": "^1.64.1"
   },
   "devDependencies": {
-    "@tangle-network/agent-interface": "^5.7.1",
+    "@tangle-network/agent-interface": "^5.10.1",
     "@tangle-network/brand": "^1.27.1",
     "@tangle-network/sandbox-ui": ">=0.137.0 <0.138.0",
     "@tangle-network/ui": "^11.44.0",
